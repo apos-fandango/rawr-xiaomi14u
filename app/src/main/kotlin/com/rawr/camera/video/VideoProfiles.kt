@@ -8,16 +8,17 @@ package com.rawr.camera.video
  * Defaults, from takes on the phone (frame time per budget):
  * - 1080p30 (~15 of 33 ms base): everything but denoise
  * - 1080p60 (~11 of 16.7 ms base, ~13 with highlight): highlight reconstruction, DCP, lens correction, stabilisation
- * - 4K30 / Open Gate 30 (~28 of 33 ms base): lens correction and stabilisation only
- * - 4K60: nothing; it records through the one-pass fast path, which can't do any of them
+ * - 4K30 (~28 of 33 ms base): lens correction and stabilisation only
+ * - Open Gate 30 (4096x2304, ~34 of 33.3 ms base: the full path misses even with every feature off) and 4K60:
+ *   nothing; they record through the one-pass fast path, which can't do any of them
  * - denoise: nowhere (~110 ms a frame even at 1080p)
  */
-enum class VideoProfileMode(val id: String, val label: String, val chip: String) {
-    Hd30("hd30", "1080p 30 fps", "1080·30"),
-    Hd60("hd60", "1080p 60 fps", "1080·60"),
-    Uhd30("uhd30", "4K 30 fps", "4K·30"),
-    Uhd60("uhd60", "4K 60 fps", "4K·60"),
-    OpenGate30("og30", "Open Gate 30 fps", "OG·30");
+enum class VideoProfileMode(val id: String, val label: String, val chip: String, val size: VideoCropSize) {
+    Hd30("hd30", "1080p 30 fps", "1080·30", VideoCropSize.HD),
+    Hd60("hd60", "1080p 60 fps", "1080·60", VideoCropSize.HD),
+    Uhd30("uhd30", "4K 30 fps", "4K·30", VideoCropSize.UHD),
+    Uhd60("uhd60", "4K 60 fps", "4K·60", VideoCropSize.UHD),
+    OpenGate30("og30", "Open Gate 30 fps", "OG·30", VideoCropSize.OpenGate);
 
     companion object {
         /** 24 fps uses the 30 fps profile (more time per frame). */
@@ -72,7 +73,7 @@ data class VideoProfiles(val enabled: Map<VideoProfileMode, Set<VideoProfileFeat
                 ),
                 VideoProfileMode.Uhd30 to setOf(VideoProfileFeature.LensCorrection, VideoProfileFeature.Stabilise),
                 VideoProfileMode.Uhd60 to emptySet(),
-                VideoProfileMode.OpenGate30 to setOf(VideoProfileFeature.LensCorrection, VideoProfileFeature.Stabilise)
+                VideoProfileMode.OpenGate30 to emptySet()
             )
         )
 

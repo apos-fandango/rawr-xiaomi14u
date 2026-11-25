@@ -128,19 +128,22 @@ void VideoRecorder::record(VkCommandBuffer command, uint32_t frameSlot, uint32_t
         }
         output_.initialized_[imageIndex] = true;
     };
-    // utalpt's fast path (see VideoProcessingResources::prepare): RAW -> encoder YUV in one pass. 4K above 30 fps
-    // always records this way (the full path takes ~28 ms of a 16.7 ms frame) while its real-time profile has every
-    // feature off (Settings → Video Encoder → Real-time profiles; switching one on there sends 4K60 through the full
-    // path, to test). Below that it runs only with debug.rawr.enc_fast 1 and only for frames that need none of them.
-    // The reason is logged once per take (VIDEO_FAST_PATH). The scopes don't update on fast-path frames.
+    // utalpt's fast path (see VideoProcessingResources::prepare): RAW -> encoder YUV in one pass (~11 ms at 4K). It
+    // runs for frames wider than 2560 px (4K, Open Gate) that need none of the full path's features, i.e. while the
+    // mode's real-time profile has every switch off (Settings → Video Encoder → Real-time profiles), so a mode the
+    // full path can't keep up with records without drops: 4K60 (~28 ms of 16.7) and Open Gate 4096x2304 at 30 fps
+    // (~34 ms of 33.3, every feature off: diagnostics 20261125_132305). Switching a feature on there sends the mode
+    // through the full path, to test. Narrower sizes run it only with debug.rawr.enc_fast 1. The reason is logged
+    // once per take (VIDEO_FAST_PATH). The scopes don't update on fast-path frames.
     const bool fastRate =
         rawrcam::video::videoModeFps().load(std::memory_order_relaxed) > 30 && output_.extent_.width > 2560u;
+    const bool fastSize = output_.extent_.width > 2560u;
     const bool dcpOn = dcp && rawrcam::video::videoProfileDcp().load(std::memory_order_relaxed);
     const char* fastReason = nullptr;
     if (!resources_.fast_ || !resources_.fastBake_)
         fastReason = "unavailable";
-    else if (!fastRate && !resources_.fastForced_)
-        fastReason = "full_path_rate";
+    else if (!fastSize && !resources_.fastForced_)
+        fastReason = "full_path_size";
     else if (!output_.yuv() || imageIndex >= VideoOutput::kYuvImages || !output_.yuvFrames_[imageIndex].buffer)
         fastReason = "no_yuv";
     else if (activeConfig.highlightEnabled)

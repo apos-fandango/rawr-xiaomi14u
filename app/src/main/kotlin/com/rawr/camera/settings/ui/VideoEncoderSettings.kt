@@ -279,12 +279,13 @@ private fun VideoProfilesGroup(state: SettingsUiState, dispatch: SettingsDispatc
             checked = profiles.allows(mode, VideoProfileFeature.Stabilise),
             supportingText = "Stabilise below; Lock and Follow from the Level tile"
         ) { toggle(VideoProfileFeature.Stabilise, it) }
-        if (mode == com.rawr.camera.video.VideoProfileMode.Uhd60) {
+        if (mode.size != com.rawr.camera.video.VideoCropSize.HD) {
             SettingDivider()
             SettingsRow(
-                "4K 60 fps",
-                supportingText = "Records through the one-pass fast path while every switch here is off; " +
-                    "any switch on sends it through the full path, which may drop frames."
+                mode.label,
+                supportingText = "Records through the one-pass fast path while every switch here is off. " +
+                    "Any switch on sends it through the full path, which may drop frames" +
+                    if (mode == com.rawr.camera.video.VideoProfileMode.Uhd30) "." else " at this size."
             )
         }
         SettingDivider()

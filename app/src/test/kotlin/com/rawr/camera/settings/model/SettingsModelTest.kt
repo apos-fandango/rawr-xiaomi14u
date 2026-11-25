@@ -572,6 +572,8 @@ class SettingsModelTest {
         assertFalse(d.allows(VideoProfileMode.Uhd30, VideoProfileFeature.Highlight))
         assertTrue(d.allows(VideoProfileMode.Uhd30, VideoProfileFeature.LensCorrection))
         assertTrue(VideoProfileFeature.entries.none { d.allows(VideoProfileMode.Uhd60, it) })
+        assertTrue(VideoProfileFeature.entries.none { d.allows(VideoProfileMode.OpenGate30, it) })
+        assertEquals(VideoCropSize.OpenGate, VideoProfileMode.OpenGate30.size)
         assertTrue(VideoProfileMode.entries.none { d.allows(it, VideoProfileFeature.Denoise) })
         assertEquals(d, VideoProfiles.decode(d.encode()))
         assertEquals(d, VideoProfiles.decode("garbage"))
