@@ -63,6 +63,7 @@ enum class ShaderId : std::uint32_t {
     RxFitMotion,
     // X14U: sensor defects hidden in each burst frame before a merge (rx_defect_patch.comp).
     RxDefectPatch,
+    RxMergedCfa,
     Count
 };
 struct ImageBinding {
