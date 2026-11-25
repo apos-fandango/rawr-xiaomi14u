@@ -91,6 +91,7 @@ git cherry-pick <first> <next> ...
 ## Known issues and open ends
 
 - **One camera frame at record start:** with YUV, 5 of 7 takes lost one camera frame in the first quarter second (`INGRESS_QUEUE_PRESSURE rawDropped=1`). It's not the YUV setup time (moved outside the lock in 46015fb, and it still happened). Next step: per-frame GPU and import timing for the first 2 s of a take.
+- **24 fps on the 1x:** the 1x's video lens (1xV, the 16:9 4096x2304 stream) kills the camera a second after a fixed 24 fps range (diagnostics 20261125_112228 and _131228: `Device error received, code 1`, then `encoder output format missing csd-0`, since no frame ever reaches the encoder). The other lenses record 24 fps on their 4:3 stream, so at 24 fps a lens runs on its own stream instead of its video lens (`adb shell setprop debug.rawr.rec24_video_lens 1` brings the old behavior back).
 - **Heat:** the RAW viewfinder runs the GPU about two thirds busy even when idle. Candidates to cut: the HDR+ ring in video (`video_mf_off`), the half-size monitor (`half_monitor`), and UI redraws while recording.
 - **Upstream and forks:** utalpt's `yuv-probe` branch has a one-pass RAW→YUV fast path (4K60), a clean recording view, a Gyroflow log and more, none of them ported yet.
 

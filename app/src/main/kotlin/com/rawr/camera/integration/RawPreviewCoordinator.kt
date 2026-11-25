@@ -240,6 +240,13 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         pushLensProfiles(lenses, video)
     }
 
+    /**
+     * X14U: a lens with a video lens (the 1x's 16:9 "1xV") runs as it in video, except at 24 fps: the camera dies a
+     * second after a fixed 24 fps range on that stream (diagnostics 20261125_112228, _131228), while the lens's own
+     * 4:3 stream records 24 fps. `adb shell setprop debug.rawr.rec24_video_lens 1` keeps the video lens at 24 fps too.
+     */
+    private fun videoLensAt(fps: Int): Boolean = fps != 24 || DebugProps.int("rec24_video_lens", 0) == 1
+
     // X14U: a run-as lens (50 MP) runs only for the shot; the viewfinder stays on the lens's own 12 MP setup, where
     // AF and MF work (the full-size mode doesn't drive the focus motor; the lens keeps its position across the switch).
     @Volatile private var runAsForShot = false
@@ -252,17 +259,20 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
         pushLensProfiles(lenses, video)
     }
 
+
     // X14U: lenses with a video lens run as it in video mode, so the profile follows the capture mode.
     private val lensSync = Any()
     private var lensProfiles: List<LensProfile>? = null
     private var lensVideoMode = false
+    private var lensVideoFps = 30
 
     private fun pushLensProfiles(lenses: List<LensProfile>?, video: Boolean) {
+        val videoLens = synchronized(lensSync) { videoLensAt(lensVideoFps) }
         val json = lenses?.let { list ->
             // Lens options: the camera runs each lens with its selected choices applied (keeps the lens id).
             val resolved = com.rawr.camera.settings.preferences.LensOptionsCodec.forCamera(list, video, { lens, error ->
                 Log.e(TAG, "lens options of ${lens.name} not applied", error)
-            }, runAs = runAsForShot)
+            }, runAs = runAsForShot, videoLens = videoLens)
             LensProfileCodec.encode(resolved, enabledOnly = true, dcpDir = dcpDir)
         }
         postNative { native.setCameraProfile(nativeHandle, json ?: native.builtInCameraProfile()) }
@@ -348,8 +358,10 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
 
     fun setVideoMode(isVideo: Boolean, fps: Int) {
         val lenses = synchronized(lensSync) {
-            val changed = lensVideoMode != isVideo
+            // A change to or from 24 fps swaps the 1x between its video lens and its own stream.
+            val changed = lensVideoMode != isVideo || (isVideo && videoLensAt(lensVideoFps) != videoLensAt(fps))
             lensVideoMode = isVideo
+            if (isVideo) lensVideoFps = fps
             // Also when a lens's photo and video DCP differ (video has its own DCP choice).
             lensProfiles?.takeIf {
                 changed && it.any { lens -> !lens.videoLens.isNullOrBlank() || lens.image.dcp != lens.image.videoDcp }

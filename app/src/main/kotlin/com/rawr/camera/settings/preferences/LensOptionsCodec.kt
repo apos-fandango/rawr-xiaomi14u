@@ -155,7 +155,13 @@ internal object LensOptionsCodec {
         video: Boolean,
         onError: (LensProfile, Throwable) -> Unit = { _, _ -> },
         /** X14U: false keeps a lens on its own setup while a choice names a run-as lens (that lens is for the shot). */
-        runAs: Boolean = true
+        runAs: Boolean = true,
+        /**
+         * X14U: false in video mode runs a lens with a video lens on its own stream (rows the video lens lacks are
+         * dropped, as with it). The 1x's 16:9 "1xV" stream kills the camera at a fixed 24 fps (diagnostics
+         * 20261125_112228, _131228); the lens's own 4:3 stream records 24 fps like the other lenses do.
+         */
+        videoLens: Boolean = true
     ): List<LensProfile> {
         fun named(name: String?) = name?.trim()?.takeIf { it.isNotEmpty() }
             ?.let { n -> lenses.firstOrNull { it.name.trim().equals(n, ignoreCase = true) } }
@@ -164,7 +170,14 @@ internal object LensOptionsCodec {
             val target = if (video) named(lens.videoLens)?.takeIf { it.videoLens == null }
             else if (!runAs) null
             else named(lens.runAsTarget())?.takeIf { it.videoLens == null && it.runAsTarget() == null }
-            val source = target?.let { videoTarget(lens, it, video) } ?: lens
+            val ownStream = video && !videoLens && target != null
+            val source = when {
+                ownStream -> lens.copy(options = lens.options.filter { row ->
+                    target!!.options.any { it.name.trim().equals(row.name.trim(), ignoreCase = true) }
+                })
+                target != null -> videoTarget(lens, target, video)
+                else -> lens
+            }
             val resolved = runCatching { resolve(source) }.onFailure { onError(lens, it) }
                 .getOrDefault(source.copy(options = emptyList()))
             // Video runs with the lens's video DCP (Default unless chosen); overrides never reach the camera.

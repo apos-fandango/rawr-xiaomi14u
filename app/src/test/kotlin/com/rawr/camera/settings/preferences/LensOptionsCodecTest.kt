@@ -191,6 +191,24 @@ class LensOptionsCodecTest {
     }
 
     @Test
+    fun videoLensCanBeSkippedSoTheLensKeepsItsOwnStream() {
+        val wide = main.copy(videoLens = "1xV").selectOption(0, 1)
+        val lenses = listOf(LensProfile("0.5x", "3"), wide, video)
+        val own = LensOptionsCodec.forCamera(lenses, video = true, videoLens = false)
+        // Still hidden from the pill row, still the 1x's own camera and stream (not the 16:9 1xV one).
+        assertEquals(listOf("0.5x", "1x"), own.map { it.name })
+        assertEquals("0", own[1].camera.id)
+        assertTrue(own[1].streams.raw.choice.height != 2304)
+        // Rows the video lens lacks stay dropped, as with it.
+        assertFalse(own[1].vendorKeys.any { it.tag == modeKey })
+        // Photo mode is unchanged by the flag.
+        assertEquals(
+            LensOptionsCodec.forCamera(lenses, video = false).map { it.camera.id },
+            LensOptionsCodec.forCamera(lenses, video = false, videoLens = false).map { it.camera.id }
+        )
+    }
+
+    @Test
     fun videoLensRoundTripsAndValidates() {
         val wide = main.copy(videoLens = "1xV")
         val decoded = LensProfileCodec.decodeBackup(LensProfileCodec.encode(listOf(wide, video)))
