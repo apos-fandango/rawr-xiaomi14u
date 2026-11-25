@@ -84,6 +84,7 @@ struct EvenPc {
     float alpha, beta;
     std::int32_t rrow;
     std::int32_t ox[7];   // atlas column of pyramid level 1 .. 6
+    std::int32_t colour;  // X14U: 0 = colour gains 1 (luma only)
 };
 // Rows of one strip of the grain pass (only tests change it: every height must give the same output).
 constexpr std::int32_t kStripRows = 256;
@@ -658,6 +659,7 @@ void RextureRecorder::setStripRowsForTesting(std::uint32_t rows) noexcept {
 // the clean neighbours' level (1/8 resolution), the pyramid G_1 .. G_6, the rebuilt levels R_5 .. R_1, the level 0 gains,
 // then the output.
 void RextureRecorder::recordGrainPass(VkCommandBuffer c) const {
+    if (config_.grainEven == 0) return;
     const auto& out = arena_.image("linear_output");
     const auto& atlas = arena_.image("rx_acc_a");
     const auto& gain = arena_.image("rx_acc_c");
@@ -673,7 +675,8 @@ void RextureRecorder::recordGrainPass(VkCommandBuffer c) const {
     const DispatchBindings b{{ib(0, out), ib(1, atlas), ib(2, gain), ib(3, arena_.image("rx_lc_m")), ib(4, refA),
                               ib(5, arena_.image("rx_mov_gb"))},
                              {}};
-    EvenPc q{0, 0, w, h, config_.noiseAlpha, config_.noiseBeta, std::int32_t(size(1).height), {}};
+    EvenPc q{0, 0, w, h, config_.noiseAlpha, config_.noiseBeta, std::int32_t(size(1).height), {},
+             config_.grainEven == 2 ? 0 : 1};
     for (std::int32_t l = 1, x = 0; l <= 6; ++l) { q.ox[l] = x; x += std::int32_t(size(l).width); }
     const auto run = [&](std::int32_t op, std::int32_t level, std::uint32_t gx, std::uint32_t gy) {
         q.op = op;

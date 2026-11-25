@@ -100,6 +100,7 @@ struct Pc {
     float alpha, beta;
     int32_t rrow;
     int32_t ox[7];
+    int32_t colour;
 };
 bool patch(uint32_t x, uint32_t y) { return x >= 80 && x < 176 && y >= 80 && y < 176; }
 bool textured(uint32_t x) { return x >= 256 && x < 512; }
@@ -165,7 +166,7 @@ int main() {
             for (auto* im : all) barrier(cmd, im->i, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL);
             const auto ib = [](uint32_t b, const vktest::Img& i) { return ImageBinding{b, i.v, VK_IMAGE_LAYOUT_GENERAL}; };
             const DispatchBindings bind{{ib(0, outI), ib(1, atlas), ib(2, gain), ib(3, mI), ib(4, refA), ib(5, refB)}, {}};
-            Pc p{0, 0, int32_t(W), int32_t(H), kAlpha, 0.0f, int32_t(size(1).second), {}};
+            Pc p{0, 0, int32_t(W), int32_t(H), kAlpha, 0.0f, int32_t(size(1).second), {}, 1};
             for (int32_t l = 1, x = 0; l <= 6; ++l) { p.ox[l] = x; x += int32_t(size(l).first); }
             const auto run = [&](int32_t op, int32_t level, uint32_t gx, uint32_t gy) {
                 p.op = op;

@@ -2,6 +2,8 @@
 
 #include <stdexcept>
 
+#include <sys/system_properties.h>
+
 #include "capture/multiframe/MergeExposure.h"
 #include "capture/multiframe/MultiframeQueueHelpers.h"
 #include "diagnostics/logging/NativeLog.h"
@@ -37,6 +39,19 @@ rawr::raw_gpu_pipeline::BurstRunResult MergeProcessor::run(
     rawr::raw_merge_hdrplus_gpu::Config hdrplusConfig{};
     // Strength and tile size are fixed (Config defaults); the journaled tuning slots are reserved.
     coordinator.setRextureDetailRestore(tuning.rextureDetailRestore != 0);
+    {
+        // X14U test switches: debug.rawr.rx_even 0 (grain evening off) | 1 (default) | 2 (luma only);
+        // debug.rawr.rx_moving 0 turns the moving-texture restore off.
+        char value[PROP_VALUE_MAX] = {};
+        int grainEven = 1;
+        if (__system_property_get("debug.rawr.rx_even", value) > 0 && value[0] >= '0' && value[0] <= '2')
+            grainEven = value[0] - '0';
+        value[0] = '\0';
+        const bool moving = !(__system_property_get("debug.rawr.rx_moving", value) > 0 && value[0] == '0');
+        coordinator.setRextureGrainEven(grainEven);
+        coordinator.setRextureMovingRestore(moving);
+        LOGI("REXTURE_SWITCHES rx_even=%d rx_moving=%d", grainEven, moving ? 1 : 0);
+    }
     coordinator.initialize(context.physicalDevice(), context.device(), context.queueFamily(), mergeSubmit, width,
                            height, stageSink, mergeConfig, algorithm, hdrplusConfig);
     ScopedSemaphore mfStartSem(context.device(), useMfQueue);

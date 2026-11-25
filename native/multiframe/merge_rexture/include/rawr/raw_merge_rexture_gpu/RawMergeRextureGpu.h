@@ -27,6 +27,8 @@ struct Config {
     // broad area (a sea, waves), the merge blended a few misplaced copies of the texture (soft, painted, glints dimmed); the base
     // frame's own detail finer than ~0.05 c/px is put back there. Static areas and small or patchy movers are left as merged.
     bool movingRestore = true;
+    // X14U: grain evening (rx_even.comp) 1 = luma and colour (default), 2 = luma only (colour gains 1), 0 = skipped.
+    int grainEven = 1;
 };
 
 [[nodiscard]] inline bool valid(const Config& c) noexcept {

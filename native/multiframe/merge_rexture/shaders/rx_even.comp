@@ -33,6 +33,7 @@ layout(push_constant) uniform P {
     float alpha, beta;
     int rrow;
     int ox[7];            // atlas column of level 1 .. 6 (index = level)
+    int colour;           // X14U: 0 = colour gains 1 (luma only)
 } p;
 
 const int NB = 6;   // bands 0 .. 5, pyramid top G_6
@@ -200,6 +201,7 @@ void main() {
             const vec3 S = max(e - nb, vec3(0.0));
             vec3 a = sqrt((S + vec3(gt.x, gt.y, gt.y) * nb) / max(S + nb, vec3(1e-30)));
             if (l == NB - 1) a.x = 1.0;
+            if (p.colour == 0) a.yz = vec2(1.0);
             sU[i] = pk(a);
         }
         barrier();

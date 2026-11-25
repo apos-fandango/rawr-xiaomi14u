@@ -493,6 +493,7 @@ BurstRunResult AndroidBurstCoordinator::runRexture(const std::vector<BurstFrame>
     config.burstFrames = float(frames.size());
     config.detailRestore = rextureDetailRestore_;
     config.movingRestore = rextureMovingRestore_;
+    config.grainEven = rextureGrainEven_;
     RextureRecorder recorder(arena_, executor_, config);
     // RAWR_REXTURE_PROFILE: GPU time per dispatch group (timestamps after each group), per-chunk wall time and the host time
     // between chunks, printed at the end. Never set in production.
