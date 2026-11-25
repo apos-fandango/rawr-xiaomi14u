@@ -143,7 +143,7 @@ class AndroidBurstCoordinator final {
     void setRextureDetailRestore(bool on) noexcept { rextureDetailRestore_ = on; }
     // Rexture moving-texture restore (raw_merge_rexture_gpu::Config::movingRestore) for the next run(); on by default.
     void setRextureMovingRestore(bool on) noexcept { rextureMovingRestore_ = on; }
-    // X14U: Rexture grain evening (raw_merge_rexture_gpu::Config::grainEven) for the next run(): 1 on, 2 luma only, 0 off.
+    // X14U: Rexture grain evening (raw_merge_rexture_gpu::Config::grainEven) for the next run(): 1 on, 0 off.
     void setRextureGrainEven(int mode) noexcept { rextureGrainEven_ = mode; }
     // Frees the large per-geometry image/buffer arena after the merged output
     // has been projected, while retaining pipelines and command infrastructure.

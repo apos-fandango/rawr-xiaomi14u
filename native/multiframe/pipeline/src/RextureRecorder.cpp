@@ -80,14 +80,15 @@ static_assert(offsetof(FinalPc, rcdBalance) == 64 && sizeof(FinalPc) <= 128, "Fi
 struct FlagsPc {
     std::int32_t w, h;
 };
-// rx_even: op, pyramid level, image size, single-frame noise model
+// rx_even: op, pyramid level, image size, single-frame noise model, white balance gains of R and B over G
 struct EvenPc {
     std::int32_t op, level, w, h;
     float alpha, beta;
     std::int32_t rrow;
     std::int32_t ox[7];   // atlas column of pyramid level 1 .. 6
-    std::int32_t colour;  // X14U: 0 = colour gains 1 (luma only)
+    float wbR, wbB;
 };
+static_assert(offsetof(EvenPc, wbR) == 56 && sizeof(EvenPc) == 64, "EvenPc must match rx_even's push block");
 // Rows of one strip of the grain pass (only tests change it: every height must give the same output).
 constexpr std::int32_t kStripRows = 256;
 // The fallback RCD of a strip also needs the rows around it: its five passes depend on each other over 7 rows.
@@ -676,7 +677,7 @@ void RextureRecorder::setStripRowsForTesting(std::uint32_t rows) noexcept {
 // the clean neighbours' level (1/8 resolution), the pyramid G_1 .. G_6, the rebuilt levels R_5 .. R_1, the level 0 gains,
 // then the output.
 void RextureRecorder::recordGrainPass(VkCommandBuffer c) const {
-    if (config_.grainEven == 0) return;
+    if (config_.grainEven == 0) return;  // X14U switch (debug.rawr.rx_even)
     const auto& out = arena_.image("linear_output");
     const auto& atlas = arena_.image("rx_acc_a");
     const auto& gain = arena_.image("rx_acc_c");
@@ -692,8 +693,8 @@ void RextureRecorder::recordGrainPass(VkCommandBuffer c) const {
     const DispatchBindings b{{ib(0, out), ib(1, atlas), ib(2, gain), ib(3, arena_.image("rx_lc_m")), ib(4, refA),
                               ib(5, arena_.image("rx_mov_gb"))},
                              {}};
-    EvenPc q{0, 0, w, h, config_.noiseAlpha, config_.noiseBeta, std::int32_t(size(1).height), {},
-             config_.grainEven == 2 ? 0 : 1};
+    const auto& wb = config_.whiteBalance;
+    EvenPc q{0, 0, w, h, config_.noiseAlpha, config_.noiseBeta, std::int32_t(size(1).height), {}, wb[0] / wb[1], wb[2] / wb[1]};
     for (std::int32_t l = 1, x = 0; l <= 6; ++l) { q.ox[l] = x; x += std::int32_t(size(l).width); }
     const auto run = [&](std::int32_t op, std::int32_t level, std::uint32_t gx, std::uint32_t gy) {
         q.op = op;
