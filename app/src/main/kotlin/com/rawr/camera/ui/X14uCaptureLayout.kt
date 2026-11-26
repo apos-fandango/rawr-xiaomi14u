@@ -244,8 +244,14 @@ private sealed interface X14uEditor {
         val onIndex: (new: Int, old: Int) -> Unit
     ) : X14uEditor
 
-    data class Chips(val labels: List<String>, val selected: Int, val enabled: Boolean = true, val onPick: (Int) -> Unit) :
-        X14uEditor
+    data class Chips(
+        val labels: List<String>,
+        val selected: Int,
+        val enabled: Boolean = true,
+        /** Chips drawn dimmed but still tappable (film settings whose effect is off). */
+        val dim: Set<Int> = emptySet(),
+        val onPick: (Int) -> Unit
+    ) : X14uEditor
 
     data class Message(val text: String) : X14uEditor
 
@@ -473,6 +479,8 @@ internal fun X14uCaptureLayout(
     var filmSheet by remember { mutableStateOf<String?>(null) }
     // The recipe editor (+ in the strip, or Edit in a recipe's details): FILM_NEW or the edited recipe's id.
     var filmEdit by remember { mutableStateOf<String?>(null) }
+    // The chosen setting inside a film section (its chip; Nov 26 sections editor).
+    var filmItem by remember { mutableStateOf<String?>(null) }
     val closeAll: () -> Boolean = {
         val open = selected != null || panel != null || toolsOpen || cropOpen || presetsOpen || presetSheet != null || timedOpen ||
             filmOpen || filmSheet != null
@@ -950,8 +958,8 @@ internal fun X14uCaptureLayout(
     when (panel) {
         null -> if (filmEditing) {
             val q = filmQuick!!
-            cells = configCells(q)
-            editorFor = { key -> configEditor(key, q, filmActions(onFilmEvent)) }
+            cells = filmSectionCells(q)
+            editorFor = { key -> filmSectionEditor(key, q, filmActions(onFilmEvent), filmItem) { filmItem = it } }
         } else {
             val all = exposureCells(state, quick, lensOptions, fiftyMp)
             val photoCells = if (simplePhoto) {
@@ -1007,14 +1015,14 @@ internal fun X14uCaptureLayout(
                 "FILM" -> {
                     val q = filmQuick!!
                     cells = listOf(X14uCell("film.preset", q.activePresetName, "PRESET", changed = q.modified)) +
-                        configCells(q)
+                        filmSectionCells(q)
                     editorFor = { key ->
                         if (key == "film.preset") {
                             X14uEditor.Chips(q.presets.map { it.label }, q.presets.indexOfFirst { it.id == q.selectedPresetId }) { i ->
                                 onFilmEvent(CaptureFilmEvent.SelectPreset(q.presets[i].id))
                             }
                         } else {
-                            configEditor(key, q, filmActions(onFilmEvent))
+                            filmSectionEditor(key, q, filmActions(onFilmEvent), filmItem) { filmItem = it }
                         }
                     }
                 }
@@ -3070,6 +3078,109 @@ private fun configCells(q: FilmSimQuickState): List<X14uCell> = buildList {
     }
 }
 
+// ---- Film settings by section (Nov 26) -------------------------------------------------------------------------
+// The row holds one cell per section (FILM, DIR, PRINT, FILTERS, DIFFUSION, GRAIN, HALATION, SCANNER, OUTPUT); the
+// slot holds that section's settings as chips (an effect's switch first) over the chosen setting's ruler / choices.
+// While an effect is off its settings are dimmed; picking one turns the effect on.
+
+/** Effect switches: each governs the settings after it in its section (until the next switch). */
+private val FilmMasterFlags = setOf(
+    "GrainEnabled", "HalationEnabled", "ScannerEnabled", "CameraDiffusionEnabled", "PrintDiffusionEnabled"
+)
+private const val FILM_SECTION_PREFIX = "sec:"
+private val FilmSectionShortLabels = mapOf("diffusion" to "DIFFUS.", "halation" to "HALAT.", "scanner" to "SCAN")
+
+private fun FilmStripItem.itemKey(): String = when (this) {
+    is FilmStripItem.Numeric -> key
+    is FilmStripItem.Discrete -> key
+    is FilmStripItem.Flag -> key
+}
+
+/** The section's items, each with the switch that governs it (null: none, or it is a switch). */
+private fun filmSectionItems(section: com.rawr.camera.model.FilmSimQuickSection): List<Pair<FilmStripItem, String?>> {
+    var master: String? = null
+    return section.items.map { item ->
+        if (item is FilmStripItem.Flag && item.key in FilmMasterFlags) {
+            master = item.key
+            item to null
+        } else item to master
+    }
+}
+
+private fun filmItemValue(q: FilmSimQuickState, item: FilmStripItem): String? = when (item) {
+    is FilmStripItem.Numeric -> q.params[item.key]?.displayValue
+    is FilmStripItem.Discrete -> q.discretes[item.key]?.displayValue
+    is FilmStripItem.Flag -> q.flags[item.key]?.let { if (it.enabled) "On" else "Off" }
+}
+
+private fun filmItemLabel(q: FilmSimQuickState, item: FilmStripItem, section: com.rawr.camera.model.FilmSimQuickSection): String {
+    val short = when (item) {
+        is FilmStripItem.Numeric -> q.params[item.key]?.shortLabel
+        is FilmStripItem.Discrete -> q.discretes[item.key]?.shortLabel
+        is FilmStripItem.Flag -> q.flags[item.key]?.shortLabel
+    } ?: item.itemKey()
+    // A setting named like its section (grain's amount is "GRAIN") reads as its amount; the switch keeps the name.
+    val named = if (short.equals(section.label, ignoreCase = true) &&
+        !(item is FilmStripItem.Flag && item.key in FilmMasterFlags)) "AMOUNT" else short
+    return named.lowercase().replaceFirstChar { it.uppercase() }
+}
+
+private fun filmSectionCells(q: FilmSimQuickState): List<X14uCell> = q.sections.map { section ->
+    val masters = section.items.filterIsInstance<FilmStripItem.Flag>().filter { it.key in FilmMasterFlags }
+    val value = when {
+        masters.isNotEmpty() -> if (masters.any { q.flags[it.key]?.enabled == true }) "On" else "Off"
+        section.items.all { it is FilmStripItem.Flag } -> section.items.filter { q.flags[it.itemKey()]?.enabled == true }
+            .mapNotNull { q.flags[it.itemKey()]?.shortLabel }.joinToString(" ").ifEmpty { "Off" }
+        else -> section.items.firstNotNullOfOrNull { filmItemValue(q, it) } ?: "—"
+    }
+    val changed = section.items.any { item ->
+        when (item) {
+            is FilmStripItem.Numeric -> q.params[item.key]?.isDefault == false
+            is FilmStripItem.Flag -> item.key in FilmMasterFlags && q.flags[item.key]?.enabled == true
+            else -> false
+        }
+    }
+    X14uCell(FILM_SECTION_PREFIX + section.key, value, FilmSectionShortLabels[section.key] ?: section.label, changed = changed)
+}
+
+/** A section's editor: its settings as chips over the chosen one's ruler / choices ([chosen] null: the first setting). */
+private fun filmSectionEditor(
+    key: String,
+    q: FilmSimQuickState,
+    actions: ConfigActions,
+    chosen: String?,
+    onChoose: (String) -> Unit
+): X14uEditor {
+    val section = q.sections.firstOrNull { FILM_SECTION_PREFIX + it.key == key } ?: return X14uEditor.Message("")
+    val items = filmSectionItems(section)
+    if (items.isEmpty()) return X14uEditor.Message("")
+    fun isMaster(item: FilmStripItem) = item is FilmStripItem.Flag && item.key in FilmMasterFlags
+    val current = chosen?.takeIf { k -> items.any { it.first.itemKey() == k && !isMaster(it.first) } }
+        ?: items.firstOrNull { !isMaster(it.first) }?.first?.itemKey()
+    val off = { master: String? -> master != null && q.flags[master]?.enabled != true }
+    val labels = items.map { (item, _) ->
+        val label = filmItemLabel(q, item, section)
+        val value = filmItemValue(q, item)
+        if (value == null) label else "$label $value"
+    }
+    val top = X14uEditor.Chips(
+        labels = labels,
+        selected = items.indexOfFirst { it.first.itemKey() == current },
+        dim = items.indices.filter { off(items[it].second) }.toSet(),
+        onPick = { i ->
+            val (item, master) = items[i]
+            if (isMaster(item)) {
+                actions.flag(item.itemKey(), q.flags[item.itemKey()]?.enabled != true)
+            } else {
+                if (master != null && off(master)) actions.flag(master, true)
+                onChoose(item.itemKey())
+            }
+        }
+    )
+    val below = current?.let { configEditor(it, q, actions) }
+    return X14uEditor.Stacked(top, below)
+}
+
 private fun configEditor(key: String, q: FilmSimQuickState, actions: ConfigActions): X14uEditor {
     q.params[key]?.let { p ->
         val step = if (p.step > 0f) p.step else .01f
@@ -3119,14 +3230,14 @@ private fun X14uEditorView(editor: X14uEditor, orientation: Orientation) {
                 X14uTextRoundButton(editor.trailing, editor.trailingActive, orientation, editor.onTrailing)
             }
         }
-        is X14uEditor.Chips -> X14uChoiceChips(editor.labels, editor.selected, editor.enabled, orientation, Modifier.fillMaxWidth(), editor.onPick)
+        is X14uEditor.Chips -> X14uChoiceChips(editor.labels, editor.selected, editor.enabled, orientation, Modifier.fillMaxWidth(), editor.onPick, editor.dim)
         is X14uEditor.Message -> Text(
             editor.text, fontFamily = X14uFont, fontSize = dpText(12f), color = CaptureColors.Muted,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
         )
         is X14uEditor.Stacked -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center) {
             X14uChoiceChips(editor.top.labels, editor.top.selected, editor.top.enabled, orientation,
-                Modifier.fillMaxWidth().height(32.dp), editor.top.onPick)
+                Modifier.fillMaxWidth().height(32.dp), editor.top.onPick, editor.top.dim)
             if (editor.below != null) Box(Modifier.fillMaxWidth().weight(1f)) { X14uEditorView(editor.below, orientation) }
         }
     }
@@ -3201,7 +3312,8 @@ private fun X14uChoiceChips(
     enabled: Boolean,
     orientation: Orientation,
     modifier: Modifier,
-    onPick: (Int) -> Unit
+    onPick: (Int) -> Unit,
+    dim: Set<Int> = emptySet()
 ) {
     // Style C (user's choice): one dark track with the selected choice highlighted. Short sets share the width
     // evenly; long ones (profiles, presets) keep their own widths and scroll inside the track.
@@ -3254,6 +3366,7 @@ private fun X14uChoiceChips(
                         overflow = TextOverflow.Ellipsis,
                         color = when {
                             !enabled -> Color.White.copy(alpha = .3f)
+                            index in dim -> (if (isSelected) CaptureColors.Accent else Color.White).copy(alpha = .3f)
                             isSelected -> CaptureColors.Accent
                             else -> Color.White.copy(alpha = .8f)
                         }
