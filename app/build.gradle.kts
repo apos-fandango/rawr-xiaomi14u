@@ -43,7 +43,7 @@ android {
     buildToolsVersion = "36.0.0"
 
     defaultConfig {
-        applicationId = "com.rawr.camera"
+        applicationId = "com.xiaomi.module.evaluation"  // Lab probe; upstream: com.rawr.camera
         minSdk = 33
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += "arm64-v8a" }
@@ -118,8 +118,8 @@ android {
     buildTypes {
         debug {
             // X14U build: its own app (installs beside Rawr and Rawr Debug).
-            applicationIdSuffix = ".x14u"
-            resValue("string", "app_name", "Rawr X14U")
+            // Lab (Nov 27): Xiaomi package name probe for 3x 50 MP AF (defaultConfig). Never merge to main.
+            resValue("string", "app_name", "Rawr XM probe")
             // Native EXIF Software tag; must match BuildConfig.VERSION_NAME.
             externalNativeBuild { cmake { arguments += "-DRAWR_VERSION_NAME=${debugVersionName.get()}" } }
         }
