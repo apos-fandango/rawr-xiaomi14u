@@ -40,6 +40,15 @@ import com.rawr.camera.settings.model.FilmSimSpecs
 import com.rawr.camera.settings.model.SettingsCatalog
 import com.rawr.camera.settings.model.withRenderProfile
 import com.rawr.camera.settings.model.SettingsValues
+import com.rawr.camera.settings.model.isFilmPresetModified
+import com.rawr.camera.settings.model.isUserFilmPreset
+import com.rawr.camera.settings.model.orderedFilmPresets
+import com.rawr.camera.settings.model.withFilmPresetDeleted
+import com.rawr.camera.settings.model.withFilmPresetMoved
+import com.rawr.camera.settings.model.withFilmPresetRenamed
+import com.rawr.camera.settings.model.withFilmPresetReverted
+import com.rawr.camera.settings.model.withFilmPresetSaved
+import com.rawr.camera.settings.model.withFilmPresetUpdated
 import com.rawr.camera.settings.model.editThroughLens
 import com.rawr.camera.settings.model.withLensOverrides
 import com.rawr.camera.settings.model.options
@@ -432,8 +441,9 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             val list = v.presetList()
             val active = list.firstOrNull { it.id == v.activePresetId } ?: list.first()
             // Compared as stored, so an in-memory difference that doesn't survive saving (a rounding) isn't a change.
+            // X14U (Nov 26): film is optional in a preset and has its own strip, so a film change doesn't mark it.
             val changed = presetSnap(active, v)?.let { snap ->
-                val merged = v.withPresetGroups(snap, active.groups)
+                val merged = v.withPresetGroups(snap, active.groups - com.rawr.camera.settings.model.PresetGroup.Film)
                 merged != v && presetCodec.encode(merged) != presetCodec.encode(v)
             } ?: false
             PresetsUi(
@@ -454,6 +464,38 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         .flowOn(Dispatchers.Default)
         .distinctUntilChanged()
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, PresetsUi())
+
+    /** X14U (Nov 26): film recipes for the FILM plate and strip (factory and saved, in the strip's order). */
+    val filmRecipes: StateFlow<com.rawr.camera.ui.FilmRecipesUi> = settingsEditor.state
+        .map { v ->
+            com.rawr.camera.ui.FilmRecipesUi(
+                items = com.rawr.camera.ui.filmRecipeItems(v.orderedFilmPresets()) { v.isUserFilmPreset(it) },
+                activeId = v.selectedFilmPresetId,
+                modified = v.isFilmPresetModified()
+            )
+        }
+        .flowOn(Dispatchers.Default)
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, com.rawr.camera.ui.FilmRecipesUi())
+
+    val filmRecipeActions: com.rawr.camera.ui.FilmRecipeActions = object : com.rawr.camera.ui.FilmRecipeActions {
+        private fun newId(v: SettingsValues) =
+            com.rawr.camera.settings.architecture.newPresetId(v.filmPresets.map { it.id })
+
+        override fun apply(id: String) { settingsEditor.update { it.withFilmPreset(id) } }
+        override fun save(name: String) { settingsEditor.update { v -> v.withFilmPresetSaved(name, newId(v)) } }
+        override fun duplicate(id: String) {
+            settingsEditor.update { v ->
+                val p = v.orderedFilmPresets().firstOrNull { it.id == id } ?: return@update v
+                v.withFilmPresetSaved("${p.name} copy", newId(v), p.look, select = false)
+            }
+        }
+        override fun update(id: String) { settingsEditor.update { it.withFilmPresetUpdated(id) } }
+        override fun revert() { settingsEditor.update { it.withFilmPresetReverted() } }
+        override fun rename(id: String, name: String) { settingsEditor.update { it.withFilmPresetRenamed(id, name) } }
+        override fun delete(id: String) { settingsEditor.update { it.withFilmPresetDeleted(id) } }
+        override fun move(from: Int, to: Int) { settingsEditor.update { it.withFilmPresetMoved(from, to) } }
+    }
 
     private fun editPresets(edit: (SettingsValues, MutableList<com.rawr.camera.settings.model.CapturePreset>) -> String?) {
         settingsEditor.update { v ->

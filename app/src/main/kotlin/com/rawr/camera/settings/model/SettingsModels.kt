@@ -784,6 +784,8 @@ data class SettingsValues(
     val videoStabilize: VideoStabilize = VideoStabilize.Off,
     /** X14U real-time video profiles (VideoProfiles.encode); blank = the defaults. */
     val videoProfiles: String = "",
+    /** X14U: film recipe strip order, comma separated ids (factory and saved); missing ids follow in default order. */
+    val filmPresetOrder: String = "",
     /** X14U video shutter shown as an angle (180°) instead of a time (1/60). */
     val videoShutterAngle: Boolean = false,
     /** X14U Pano: merge a finished set's JPEG frames into one panorama on the phone (OpenCV stitcher). */

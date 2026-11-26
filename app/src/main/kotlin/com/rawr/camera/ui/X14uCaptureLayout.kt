@@ -255,6 +255,7 @@ private sealed interface X14uEditor {
 
 /** The preset sheet that saves a new preset (otherwise the sheet holds a preset's id). */
 private const val PRESET_SAVE = "+save"
+private const val FILM_SAVE = "+film"
 
 private object X14uGeometry {
     /** Stock content height (status and navigation bars excluded) the dp values below were measured at. */
@@ -466,9 +467,15 @@ internal fun X14uCaptureLayout(
     // Timed burst (intervalometer) panel, from its tile in the tools panel.
     var timedOpen by remember { mutableStateOf(false) }
     var presetSheet by remember { mutableStateOf<String?>(null) }
+    // X14U (Nov 26): the film recipe strip (FILM plate) and its sheets (FILM_SAVE or a recipe id).
+    var filmOpen by remember { mutableStateOf(false) }
+    var filmSheet by remember { mutableStateOf<String?>(null) }
     val closeAll: () -> Boolean = {
-        val open = selected != null || panel != null || toolsOpen || cropOpen || presetsOpen || presetSheet != null || timedOpen
+        val open = selected != null || panel != null || toolsOpen || cropOpen || presetsOpen || presetSheet != null || timedOpen ||
+            filmOpen || filmSheet != null
         selected = null
+        filmOpen = false
+        filmSheet = null
         panel = null
         toolsOpen = false
         cropOpen = false
@@ -485,6 +492,8 @@ internal fun X14uCaptureLayout(
             cropOpen = false
             presetsOpen = false
             presetSheet = null
+            filmOpen = false
+            filmSheet = null
             timedOpen = false
         }
         toolsOpen = open
@@ -762,6 +771,8 @@ internal fun X14uCaptureLayout(
     // in (view model) and its camera part here: lens (and zoom, crop, aperture) first, then, once the lens is
     // running, exposure and white balance. What doesn't fit (a lens or mode this mode lacks) is skipped.
     val presetsUi = LocalCaptureExtras.current.presets
+    val filmRecipes = LocalCaptureExtras.current.filmRecipes
+    val filmRecipeActions = LocalCaptureExtras.current.filmRecipeActions
     val presetActions = LocalCaptureExtras.current.presetActions
     var pendingPreset by remember { mutableStateOf<com.rawr.camera.settings.model.PresetCamera?>(null) }
     val apertureLabelNow = lensOptions?.options?.getOrNull(apertureRowIndex)?.let { it.choices.getOrNull(it.selected)?.label?.trim() }
@@ -1099,7 +1110,9 @@ internal fun X14uCaptureLayout(
         // The readout row and the slot under it (modes, or the open control).
         val rowY = bottom + 2.dp * s
         // Presets open: the strip takes the readout row and the slot (the exposure row and lens row hide, as stock).
-        val presetsShown = presetsOpen && !recordingLock && !panoLocked
+        // The film recipe strip takes the same place (photo with film on).
+        val filmStripOpen = filmOpen && film
+        val presetsShown = (presetsOpen || filmStripOpen) && !recordingLock && !panoLocked
         // Pano set (Nov 19): the panorama forming takes the readout row and the slot.
         val panoStripShown = pano && panoSet.frames > 0
         // The preset nameplate goes under the shutter row when there's room (Nov 19), else above the Look button.
@@ -1310,6 +1323,8 @@ internal fun X14uCaptureLayout(
                         selected = null
                         presetsOpen = false
                         presetSheet = null
+                        filmOpen = false
+                        filmSheet = null
                         panel = if (panel == target) null else target
                         panelKey = when (panel) {
                             X14uPanel.Look -> panelMemory.keyFor("look.$lookTab")
@@ -1472,9 +1487,49 @@ internal fun X14uCaptureLayout(
                     )
                 }
             }
+            filmSheet?.let { sheet ->
+                val sheetModifier = if (orientation == Orientation.Landscape) Modifier.zIndex(30f).align(Alignment.Center)
+                    .uprightLayoutInLandscape(orientation).width(minOf(fullHeight - top * 2, 560.dp))
+                else Modifier.zIndex(30f).align(Alignment.TopCenter).offset(y = top + 6.dp).padding(horizontal = 12.dp).fillMaxWidth()
+                if (sheet == FILM_SAVE) {
+                    X14uFilmRecipeSaveSheet(
+                        label = "F${filmRecipes.items.size + 1}",
+                        onSave = { name ->
+                            filmRecipeActions.save(name)
+                            filmSheet = null
+                        },
+                        onClose = { filmSheet = null },
+                        modifier = sheetModifier
+                    )
+                } else {
+                    val item = filmRecipes.items.firstOrNull { it.id == sheet }
+                    if (item == null) filmSheet = null
+                    else X14uFilmRecipeDetailsSheet(
+                        item = item,
+                        active = item.id == filmRecipes.activeId,
+                        onUpdate = {
+                            filmRecipeActions.update(item.id)
+                            filmSheet = null
+                        },
+                        onRename = { filmRecipeActions.rename(item.id, it) },
+                        onDuplicate = {
+                            filmRecipeActions.duplicate(item.id)
+                            filmSheet = null
+                        },
+                        onDelete = {
+                            filmRecipeActions.delete(item.id)
+                            filmSheet = null
+                        },
+                        onClose = { filmSheet = null },
+                        modifier = sheetModifier
+                    )
+                }
+            }
             val onCellTap: (String) -> Unit = { key ->
                 presetsOpen = false
                 presetSheet = null
+                filmOpen = false
+                filmSheet = null
                 if (panoLocked) Unit
                 else if (panel == null) selected = if (selected == key) null else key
                 else {
@@ -1484,7 +1539,20 @@ internal fun X14uCaptureLayout(
             }
             // Classic video: the readouts dim while recording, so the picture stands out (the shutter row stays bright).
             val rowModifier = Modifier.fillMaxWidth().offset(y = rowY).height(rowHeight)
-            if (presetsShown) {
+            if (presetsShown && filmStripOpen) {
+                Box(Modifier.fillMaxWidth().offset(y = rowY).height(slotY + slotHeight - rowY)) {
+                    X14uFilmRecipeStrip(
+                        recipes = filmRecipes,
+                        enabled = true,
+                        onApply = { filmRecipeActions.apply(it.id) },
+                        onDetails = { filmSheet = it.id },
+                        onSaveNew = { filmSheet = FILM_SAVE },
+                        onUpdate = { filmRecipes.activeId?.let(filmRecipeActions::update) },
+                        onRevert = { filmRecipeActions.revert() },
+                        onMove = filmRecipeActions::move
+                    )
+                }
+            } else if (presetsShown) {
                 Box(Modifier.fillMaxWidth().offset(y = rowY).height(slotY + slotHeight - rowY)) {
                     X14uPresetStrip(
                         presets = presetsUi,
@@ -1552,7 +1620,11 @@ internal fun X14uCaptureLayout(
                 sideAlpha = recordingDim
             )
             if (activePreset != null && plateBelow) {
-                Box(Modifier.fillMaxWidth().offset(y = plateCenter - 13.dp).height(26.dp), contentAlignment = Alignment.Center) {
+                Row(
+                    Modifier.fillMaxWidth().offset(y = plateCenter - 13.dp).height(26.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     X14uPresetPlate(
                         label = activePreset.label + if (presetChanged) "*" else "",
                         name = activePreset.name,
@@ -1565,6 +1637,27 @@ internal fun X14uCaptureLayout(
                             presetsOpen = open
                         },
                         modifier = Modifier.alpha(recordingDim)
+                    )
+                    // FILM plate (Nov 26): the active recipe; dim and inert with film off or in video.
+                    val activeRecipe = filmRecipes.active.takeIf { film }
+                    X14uPresetPlate(
+                        label = activeRecipe?.label?.plus(if (filmRecipes.modified) "*" else "") ?: "F",
+                        name = when {
+                            !film -> "Film off"
+                            activeRecipe != null -> activeRecipe.name
+                            else -> "Custom"
+                        },
+                        accent = activeRecipe != null,
+                        enabled = film && !recordingLock && !panoLocked,
+                        orientation = orientation,
+                        onTap = {
+                            val open = !filmOpen
+                            closeAll()
+                            filmOpen = open
+                        },
+                        modifier = Modifier.alpha(recordingDim * if (film) 1f else .35f),
+                        tag = "x14u_film_badge",
+                        description = "Film recipe"
                     )
                 }
             }

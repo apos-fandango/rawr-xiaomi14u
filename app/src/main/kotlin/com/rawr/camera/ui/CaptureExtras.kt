@@ -51,7 +51,10 @@ data class CaptureExtras(
     val onFullSizeShot: () -> Boolean = { false },
     /** X14U presets (P0 baseline, P1…): the badge above Look and the preset strip. */
     val presets: PresetsUi = PresetsUi(),
-    val presetActions: PresetActions = PresetActions.None
+    val presetActions: PresetActions = PresetActions.None,
+    /** X14U film recipes: the FILM plate next to the preset plate and its strip. */
+    val filmRecipes: FilmRecipesUi = FilmRecipesUi(),
+    val filmRecipeActions: FilmRecipeActions = FilmRecipeActions.None
 )
 
 val LocalCaptureExtras = staticCompositionLocalOf { CaptureExtras() }

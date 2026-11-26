@@ -680,6 +680,61 @@ fun SettingsValues.isFilmPresetModified(): Boolean {
 
 fun SettingsValues.isUserFilmPreset(id: String): Boolean =
     filmPresets.any { it.id == id }
+
+/** X14U: factory and saved film recipes in the strip's order ([SettingsValues.filmPresetOrder]; new ones last). */
+fun SettingsValues.orderedFilmPresets(): List<FilmPreset> {
+    val all = (FilmFactoryPresets.all + filmPresets).distinctBy { it.id }
+    val order = filmPresetOrder.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    val byId = all.associateBy { it.id }
+    val placed = order.mapNotNull { byId[it] }.distinctBy { it.id }
+    return placed + all.filter { p -> placed.none { it.id == p.id } }
+}
+
+/** X14U: the recipe at strip position [from] moved to [to]. */
+fun SettingsValues.withFilmPresetMoved(from: Int, to: Int): SettingsValues {
+    val ids = orderedFilmPresets().map { it.id }.toMutableList()
+    if (from !in ids.indices || to !in ids.indices || from == to) return this
+    ids.add(to, ids.removeAt(from))
+    return copy(filmPresetOrder = ids.joinToString(","))
+}
+
+/** The live film look saved as a new recipe (selected); null name or blank: unchanged. */
+fun SettingsValues.withFilmPresetSaved(name: String, id: String, look: FilmSimLook = filmSimLook, select: Boolean = true): SettingsValues {
+    val trimmed = name.trim().take(48)
+    if (trimmed.isEmpty()) return this
+    return copy(
+        filmPresets = filmPresets + FilmPreset(id, trimmed, look),
+        selectedFilmPresetId = if (select) id else selectedFilmPresetId
+    )
+}
+
+fun SettingsValues.withFilmPresetRenamed(id: String, name: String): SettingsValues {
+    val trimmed = name.trim().take(48)
+    if (trimmed.isEmpty()) return this
+    return copy(filmPresets = filmPresets.map { if (it.id == id) it.copy(name = trimmed) else it })
+}
+
+fun SettingsValues.withFilmPresetDeleted(id: String): SettingsValues = copy(
+    filmPresets = filmPresets.filterNot { it.id == id },
+    selectedFilmPresetId = selectedFilmPresetId?.takeUnless { it == id },
+    filmPresetOrder = filmPresetOrder.split(',').filter { it.isNotBlank() && it != id }.joinToString(",")
+)
+
+/** The selected recipe's own look back (edits dropped). */
+fun SettingsValues.withFilmPresetReverted(): SettingsValues {
+    val preset = selectedFilmPreset() ?: return this
+    return if (preset.look == filmSimLook) this else copy(filmSimLook = preset.look)
+}
+
+/** The live look into saved recipe [id] (factory recipes can't be updated). */
+fun SettingsValues.withFilmPresetUpdated(id: String): SettingsValues {
+    val existing = filmPresets.firstOrNull { it.id == id } ?: return this
+    if (existing.look == filmSimLook) return this
+    return copy(
+        filmPresets = filmPresets.map { if (it.id == id) it.copy(look = filmSimLook) else it },
+        selectedFilmPresetId = id
+    )
+}
 object FilmFactoryPresets {
     // Shared base: no grain, halation, diffusion or filters; DIR couplers on
     // (inter-layer colour inhibition) without their spatial spread.

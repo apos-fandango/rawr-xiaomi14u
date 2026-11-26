@@ -230,6 +230,7 @@ class MainActivity : ComponentActivity() {
             val fullSizeBusy by captureViewModel.fullSizeBusy.collectAsStateWithLifecycle()
             val tools by captureViewModel.tools.collectAsStateWithLifecycle()
             val presets by captureViewModel.presets.collectAsStateWithLifecycle()
+            val filmRecipes by captureViewModel.filmRecipes.collectAsStateWithLifecycle()
             val stillsHint by captureViewModel.stillsHint.collectAsStateWithLifecycle()
             androidx.compose.runtime.LaunchedEffect(Unit) {
                 captureViewModel.recording.errors.collect { message ->
@@ -313,6 +314,8 @@ class MainActivity : ComponentActivity() {
                     onFullSizeShot = captureViewModel::tryShootFullSize,
                     presets = presets,
                     presetActions = captureViewModel.presetActions,
+                    filmRecipes = filmRecipes,
+                    filmRecipeActions = captureViewModel.filmRecipeActions,
                     onToggleAudioMuted = captureViewModel::toggleAudioMuted,
                     onOpenVideoSettings = {
                         startActivity(

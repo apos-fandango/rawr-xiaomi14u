@@ -30,6 +30,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SettingsModelTest {
@@ -558,6 +559,34 @@ class SettingsModelTest {
         assertEquals(3f, controller.state.value.values.videoDenoiseStrength)
         assertEquals(0.6f, video.waveletDenoiseLuma)
         assertEquals(5, video.waveletDenoiseScales)
+    }
+
+    @Test fun filmRecipeStripOrderMoveSaveAndDelete() {
+        val base = SettingsFixtures.initialState().values.copy(filmPresets = emptyList(), filmPresetOrder = "")
+        val factory = FilmFactoryPresets.all.map { it.id }
+        // No saved order: factory recipes in their own order.
+        assertEquals(factory, base.orderedFilmPresets().map { it.id })
+        // A saved recipe follows the factory ones and becomes the active one.
+        val saved = base.withFilmPresetSaved("Night", "user-1")
+        assertEquals(factory + "user-1", saved.orderedFilmPresets().map { it.id })
+        assertEquals("user-1", saved.selectedFilmPresetId)
+        // Moving it first stores the whole order; factory recipes move too.
+        val moved = saved.withFilmPresetMoved(factory.size, 0).withFilmPresetMoved(2, 1)
+        assertEquals(listOf("user-1", factory[1], factory[0]) + factory.drop(2), moved.orderedFilmPresets().map { it.id })
+        // Out of range: unchanged.
+        assertSame(moved, moved.withFilmPresetMoved(0, 99))
+        // Deleting drops it from the order and the selection; the rest keep their places.
+        val deleted = moved.withFilmPresetDeleted("user-1")
+        assertEquals(listOf(factory[1], factory[0]) + factory.drop(2), deleted.orderedFilmPresets().map { it.id })
+        assertNull(deleted.selectedFilmPresetId)
+        // Factory recipes can't be renamed or updated; blank names are refused.
+        assertSame(saved, saved.withFilmPresetRenamed(factory[0], "X"))
+        assertSame(saved, saved.withFilmPresetSaved("  ", "user-2"))
+        assertEquals("Night 2", saved.withFilmPresetRenamed("user-1", " Night 2 ").filmPresets.single().name)
+        // Through the reducer as well.
+        val state = SettingsFixtures.initialState().let { it.copy(values = saved) }
+        assertEquals(saved.withFilmPresetMoved(0, 3).filmPresetOrder,
+            reduceFilmSettings(state, MoveFilmPreset(0, 3)).values.filmPresetOrder)
     }
 
     @Test fun videoProfilesDefaultEditAndReset() {

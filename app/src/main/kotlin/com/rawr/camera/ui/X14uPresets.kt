@@ -107,7 +107,9 @@ internal fun X14uPresetPlate(
     enabled: Boolean,
     orientation: Orientation,
     onTap: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    tag: String = "x14u_preset_badge",
+    description: String = "Preset"
 ) {
     val classic = isClassicStyle()
     val shape = RoundedCornerShape(if (classic) 5.dp else 12.dp)
@@ -125,8 +127,8 @@ internal fun X14uPresetPlate(
             )
             .clickable(enabled = enabled, onClick = onTap)
             .padding(horizontal = 10.dp)
-            .testTag("x14u_preset_badge")
-            .semantics { contentDescription = "Preset $label $name. Tap for presets." },
+            .testTag(tag)
+            .semantics { contentDescription = "$description $label $name. Tap for the strip." },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -334,7 +336,7 @@ private fun presetCardLines(item: PresetItem): List<String> =
         .take(2)
 
 @Composable
-private fun NameField(value: String, onValue: (String) -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
+internal fun NameField(value: String, onValue: (String) -> Unit, onDone: () -> Unit, modifier: Modifier = Modifier) {
     BasicTextField(
         value = value,
         onValueChange = { onValue(it.take(CapturePreset.MAX_NAME)) },

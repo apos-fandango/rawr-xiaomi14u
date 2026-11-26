@@ -520,6 +520,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
             horizonSmoothing = enumOrDefault(p[Keys.horizonSmoothing], d.horizonSmoothing),
             videoStabilize = enumOrDefault(p[Keys.videoStabilize], d.videoStabilize),
             videoProfiles = p[Keys.videoProfiles] ?: d.videoProfiles,
+            filmPresetOrder = p[Keys.filmPresetOrder] ?: d.filmPresetOrder,
             videoShutterAngle = p[Keys.videoShutterAngle] ?: d.videoShutterAngle,
             panoMerge = p[Keys.panoMerge] ?: d.panoMerge,
             panoKeepFrames = p[Keys.panoKeepFrames] ?: d.panoKeepFrames,
@@ -767,6 +768,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         p[Keys.horizonSmoothing] = v.horizonSmoothing.name
         p[Keys.videoStabilize] = v.videoStabilize.name
         p[Keys.videoProfiles] = v.videoProfiles
+        p[Keys.filmPresetOrder] = v.filmPresetOrder
         p[Keys.videoShutterAngle] = v.videoShutterAngle
         p[Keys.panoMerge] = v.panoMerge
         p[Keys.panoKeepFrames] = v.panoKeepFrames
@@ -1081,6 +1083,7 @@ class SettingsPreferencesRepository(context: Context, private val defaults: Sett
         val horizonSmoothing = stringPreferencesKey("x14u_horizon_smoothing")
         val videoStabilize = stringPreferencesKey("x14u_video_stabilize")
         val videoProfiles = stringPreferencesKey("x14u_video_profiles")
+        val filmPresetOrder = stringPreferencesKey("x14u_film_preset_order")
         val videoShutterAngle = booleanPreferencesKey("x14u_video_shutter_angle")
         val panoMerge = booleanPreferencesKey("x14u_pano_merge")
         val panoKeepFrames = booleanPreferencesKey("x14u_pano_keep_frames")

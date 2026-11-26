@@ -380,7 +380,7 @@ internal fun RendererControls(stage: RendererStage, v: SettingsValues, dispatch:
                 key(mode) {
                 modeState.SaveableStateProvider(mode) {
                 if(v.filmSimEnabled) {
-                    val presets = (FilmFactoryPresets.all + v.filmPresets).distinctBy { it.id }
+                    val presets = v.orderedFilmPresets()
                     val presetLabel = v.selectedFilmPreset()?.name?.let {
                         if (v.isFilmPresetModified()) "$it · Modified" else it
                     } ?: "Custom"

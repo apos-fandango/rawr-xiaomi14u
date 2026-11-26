@@ -68,7 +68,7 @@ internal fun SettingsValues.toFilmSimQuickState(): FilmSimQuickState {
         activePresetName = base?.name ?: "Custom",
         selectedPresetId = selectedFilmPresetId,
         modified = isFilmPresetModified(),
-        presets = (FilmFactoryPresets.all + filmPresets).map { FilmSimQuickOption(it.id, it.name) },
+        presets = orderedFilmPresets().map { FilmSimQuickOption(it.id, it.name) },
         sections = CaptureFilmCatalog.sections,
         params = CaptureFilmCatalog.controls.filterIsInstance<FilmControl.Numeric>().associate { control ->
             control.parameter.name to param(control)

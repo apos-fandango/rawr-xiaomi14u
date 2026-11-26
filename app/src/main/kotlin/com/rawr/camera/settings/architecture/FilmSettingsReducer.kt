@@ -21,70 +21,25 @@ internal fun reduceFilmSettings(
     is SaveFilmPreset, is ImportFilmPreset -> {
         val name = if (action is SaveFilmPreset) action.name else (action as ImportFilmPreset).name
         val look = if (action is ImportFilmPreset) action.look else state.values.filmSimLook
-        val trimmed = name.trim().take(48)
-        if (trimmed.isEmpty()) {
-            state
-        } else {
-            val id = newPresetId(state.values.filmPresets.map { it.id })
-            val preset = FilmPreset(id, trimmed, look)
-            state.withValues(
-                state.values.copy(
-                    filmPresets = state.values.filmPresets + preset,
-                    selectedFilmPresetId = if (action is SaveFilmPreset) id else state.values.selectedFilmPresetId
-                )
-            )
-        }
-    }
-
-    is RenameFilmPreset -> {
-        val trimmed = action.name.trim().take(48)
-        if (trimmed.isEmpty()) {
-            state
-        } else {
-            state.withValues(
-                state.values.copy(
-                    filmPresets = state.values.filmPresets.map {
-                        if (it.id == action.id) it.copy(name = trimmed) else it
-                    }
-                )
-            )
-        }
-    }
-
-    is DeleteFilmPreset -> {
-        state.withValues(
-            state.values.copy(
-                filmPresets = state.values.filmPresets.filterNot { it.id == action.id },
-                selectedFilmPresetId = state.values.selectedFilmPresetId
-                    ?.takeUnless { it == action.id }
-            )
+        val next = state.values.withFilmPresetSaved(
+            name, newPresetId(state.values.filmPresets.map { it.id }), look, select = action is SaveFilmPreset
         )
+        if (next === state.values) state else state.withValues(next)
     }
 
-    is RevertFilmPreset -> {
-        val preset = state.values.selectedFilmPreset()
-        if (preset == null || preset.look == state.values.filmSimLook) {
-            state
-        } else {
-            state.withValues(state.values.copy(filmSimLook = preset.look))
-        }
-    }
+    is RenameFilmPreset -> state.values.withFilmPresetRenamed(action.id, action.name)
+        .let { if (it === state.values) state else state.withValues(it) }
 
-    is UpdateFilmPreset -> {
-        val existing = state.values.filmPresets.firstOrNull { it.id == action.id }
-        if (existing == null || existing.look == state.values.filmSimLook) {
-            state
-        } else {
-            state.withValues(
-                state.values.copy(
-                    filmPresets = state.values.filmPresets.map {
-                        if (it.id == action.id) it.copy(look = state.values.filmSimLook) else it
-                    },
-                    selectedFilmPresetId = action.id
-                )
-            )
-        }
-    }
+    is DeleteFilmPreset -> state.withValues(state.values.withFilmPresetDeleted(action.id))
+
+    is RevertFilmPreset -> state.values.withFilmPresetReverted()
+        .let { if (it === state.values) state else state.withValues(it) }
+
+    is UpdateFilmPreset -> state.values.withFilmPresetUpdated(action.id)
+        .let { if (it === state.values) state else state.withValues(it) }
+
+    is MoveFilmPreset -> state.values.withFilmPresetMoved(action.from, action.to)
+        .let { if (it === state.values) state else state.withValues(it) }
     else -> error("Unsupported film settings action: $action")
 }
 

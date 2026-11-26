@@ -166,6 +166,9 @@ data object RevertFilmPreset : SettingsApplicationAction
 
 data class UpdateFilmPreset(val id: String) : SettingsApplicationAction
 
+/** X14U: film recipe strip position [from] to [to] (factory and saved recipes, [orderedFilmPresets] order). */
+data class MoveFilmPreset(val from: Int, val to: Int) : SettingsApplicationAction
+
 /** Adds an exported film preset under a fresh id. */
 data class ImportFilmPreset(val name: String, val look: FilmSimLook) : SettingsApplicationAction
 

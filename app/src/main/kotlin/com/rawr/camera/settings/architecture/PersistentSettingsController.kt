@@ -62,7 +62,7 @@ class PersistentSettingsController(
             is SetFilmSimEnabled, is SetFilmSimNumericValue,
             is SetFilmSimDiscreteValue, is SetFilmSimFlag, is SelectFilmPreset,
             is SaveFilmPreset, is RenameFilmPreset, is DeleteFilmPreset,
-            is RevertFilmPreset, is UpdateFilmPreset, is ImportFilmPreset -> reduceFilmSettings(state, action)
+            is RevertFilmPreset, is UpdateFilmPreset, is ImportFilmPreset, is MoveFilmPreset -> reduceFilmSettings(state, action)
 
             is SetMultiframeChromaDenoise, is SetMultiframeRextureNativeRgb, is SetMultiframeRextureDetailRestore, is SetMultiframeBaseFrameMode, is SetMultiframeNumericValue,
             is SetMultiframeMergeAlgorithm -> reduceMultiframeSettings(state, action)
