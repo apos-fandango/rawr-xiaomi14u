@@ -155,6 +155,7 @@ class CameraDeviceSession final {
     ACameraMetadata* characteristics_ = nullptr;
     ANativeWindow* rawWindow_ = nullptr;
     bool probe50_ = false;
+    bool probe50RawOnlyStill_ = false;  // probe value 2: stills target the RAW only
     CameraSessionCallbackContext* sessionContext_ = nullptr;
     CameraDeviceCallbackContext* deviceContext_ = nullptr;
     metadata::CameraContextMetadataPtr cameraContext_;

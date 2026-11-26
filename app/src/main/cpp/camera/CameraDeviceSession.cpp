@@ -586,7 +586,9 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
     std::vector<SessionOutput> outputs;
     {
         char value[PROP_VALUE_MAX] = {};
-        probe50_ = captureWindow_ && __system_property_get("debug.rawr.probe50", value) > 0 && value[0] == '1';
+        const bool set = captureWindow_ && __system_property_get("debug.rawr.probe50", value) > 0;
+        probe50_ = set && (value[0] == '1' || value[0] == '2');
+        probe50RawOnlyStill_ = set && value[0] == '2';
     }
     if (!probe50_) outputs.push_back({rawWindow_, physicalCameraId, recipe.rawStreamUseCase});
     const uint32_t rawWidth = selected ? selected->stream.width : 0, rawHeight = selected ? selected->stream.height : 0;
@@ -755,7 +757,8 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
         // The probe's repeating request is the companion alone: no RAW stream runs continuously.
         if (!companionWindow_ || !profileCompanionTargeted_)
             return fail("probe50", "reason=needs_targeted_companion");
-        diag(std::string("PROBE50 active=1 outputs=companion+capture companion=") +
+        diag(std::string("PROBE50 active=1 stillRawOnly=") + (probe50RawOnlyStill_ ? "1" : "0") +
+             " outputs=companion+capture companion=" +
              (companionFacts_ ? "yes" : "unknown") + " opMode=" + std::to_string(recipe.opMode));
     } else {
         s = request_->addTarget(rawWindow_);
@@ -976,7 +979,9 @@ bool CameraDeviceSession::captureFullSize(CameraRequestPipeline& pipeline, const
     if (control.capabilities.frameRate > 0 && !ok(pipeline.applySessionCadence(base, control))) return false;
     if (photoIncludePreview_ && !ok(base->addTarget(rawWindow_))) return false;
     // A profile companion rides on every request of its mode, stills included.
-    if (companionFromProfile_ && profileCompanionTargeted_ && companionWindow_ && !ok(base->addTarget(companionWindow_)))
+    // Probe value 2: the still targets the RAW only (a PRIVATE companion on it lost the RAW buffer, Nov 27).
+    if (!probe50RawOnlyStill_ && companionFromProfile_ && profileCompanionTargeted_ && companionWindow_ &&
+        !ok(base->addTarget(companionWindow_)))
         return false;
     // A gate's per-still keys exist only on that vendor's cameras; elsewhere their lookup would fail the still.
     const GatePreset& gate = gatePreset(stillGate_);
@@ -1041,7 +1046,8 @@ bool CameraDeviceSession::captureFullSize(CameraRequestPipeline& pipeline, const
         if (!keysLogged) {
             diag("CAMERA_STILL_TARGETS raw=" + std::to_string(photoIncludePreview_) +
                  " capture=1 companion=" +
-                 std::to_string(companionFromProfile_ && profileCompanionTargeted_ && companionWindow_));
+                 std::to_string(!probe50RawOnlyStill_ && companionFromProfile_ && profileCompanionTargeted_ &&
+                                companionWindow_));
             dumpCaptureRequest(sessionParameters_.get(), "session", diag);
             dumpCaptureRequest(request_.get(), "repeating", diag);
             dumpCaptureRequest(request, "still", diag);
