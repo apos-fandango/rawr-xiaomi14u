@@ -710,7 +710,7 @@ fun SettingsValues.withFilmPresetSaved(name: String, id: String, look: FilmSimLo
 
 fun SettingsValues.withFilmPresetRenamed(id: String, name: String): SettingsValues {
     val trimmed = name.trim().take(48)
-    if (trimmed.isEmpty()) return this
+    if (trimmed.isEmpty() || filmPresets.none { it.id == id }) return this
     return copy(filmPresets = filmPresets.map { if (it.id == id) it.copy(name = trimmed) else it })
 }
 
