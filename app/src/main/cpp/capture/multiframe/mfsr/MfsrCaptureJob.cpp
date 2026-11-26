@@ -465,7 +465,7 @@ void MfsrCaptureJob::runStages(Published& published) {
                                      filmActual, mergeResult->frameCount, ctx.rawWidth, ctx.rawHeight) +
                 buildSharpnessSection(baseFrameMode, sharpnessScores, job->referenceIndex,
                                       static_cast<std::uint32_t>(job->frames.size()),
-                                      tuning.mergeAlgorithm == kMergeAlgorithmRexture);
+                                      tuning.mergeAlgorithm == kMergeAlgorithmRexture, job->firstFrameBase);
             jpegContext.output.hasMultiframeTimings = mergeResult.has_value();
             jpegContext.output.multiframeTimingsBlock = formatMultiframeTimings(mfStages, baseFrameMode);
             jpegContext.output.multiframeTotalMs = mfStages.multiframeTotalMs();
@@ -708,7 +708,7 @@ void MfsrCaptureJob::runStages(Published& published) {
                                              mergeResult->outputExtent.height) +
                         buildSharpnessSection(baseFrameMode, sharpnessScores, job->referenceIndex,
                                               static_cast<std::uint32_t>(job->frames.size()),
-                                              tuning.mergeAlgorithm == kMergeAlgorithmRexture) +
+                                              tuning.mergeAlgorithm == kMergeAlgorithmRexture, job->firstFrameBase) +
                         "\nTIMINGS (through CFA projection): " +
                         rawrcam::encoding::jpeg::formatMs1(
                             dngSubtotalMs(baseReadMs, mfStages.multiframeTotalMs(), projectMs)) +
@@ -1158,7 +1158,7 @@ void MfsrCaptureJob::runStages(Published& published) {
                                                  mergeResult->outputExtent.height) +
                             buildSharpnessSection(baseFrameMode, sharpnessScores, job->referenceIndex,
                                                   static_cast<std::uint32_t>(job->frames.size()),
-                                                  tuning.mergeAlgorithm == kMergeAlgorithmRexture);
+                                                  tuning.mergeAlgorithm == kMergeAlgorithmRexture, job->firstFrameBase);
                         // mergeResult is engaged here (a run failure jumps to the
                         // outer catch); guard anyway so a future early-exit path
                         // can never emit an all-zero multiframe block.
