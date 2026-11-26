@@ -40,11 +40,11 @@ rawr::raw_gpu_pipeline::BurstRunResult MergeProcessor::run(
     // Strength and tile size are fixed (Config defaults); the journaled tuning slots are reserved.
     coordinator.setRextureDetailRestore(tuning.rextureDetailRestore != 0);
     {
-        // X14U switches: debug.rawr.rx_even 0 (grain evening off, default: #132 gave a green / magenta cast on the
-        // X14U; #162 works after white balance, still to be checked on the phone) | 1 (on);
-        // debug.rawr.rx_moving 0 turns the moving-texture restore off.
+        // X14U switches: debug.rawr.rx_even 1 (grain evening on, default since #162 works after white balance) |
+        // 0 (off: #132 gave a green / magenta cast on the X14U); debug.rawr.rx_moving 0 turns the moving-texture
+        // restore off.
         char value[PROP_VALUE_MAX] = {};
-        int grainEven = 0;
+        int grainEven = 1;
         if (__system_property_get("debug.rawr.rx_even", value) > 0 && value[0] >= '0' && value[0] <= '1')
             grainEven = value[0] - '0';
         value[0] = '\0';
