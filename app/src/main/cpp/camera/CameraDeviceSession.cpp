@@ -2,6 +2,7 @@
 #include "camera/VendorCameraGate.h"
 
 #include <camera/NdkCameraMetadataTags.h>
+#include <sys/system_properties.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -583,12 +584,16 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
     RequestStatus s = ACAMERA_OK;
     const std::string physicalCameraId = selected ? selected->physicalCameraId : std::string();
     std::vector<SessionOutput> outputs;
-    outputs.push_back({rawWindow_, physicalCameraId, recipe.rawStreamUseCase});
+    {
+        char value[PROP_VALUE_MAX] = {};
+        probe50_ = captureWindow_ && __system_property_get("debug.rawr.probe50", value) > 0 && value[0] == '1';
+    }
+    if (!probe50_) outputs.push_back({rawWindow_, physicalCameraId, recipe.rawStreamUseCase});
     const uint32_t rawWidth = selected ? selected->stream.width : 0, rawHeight = selected ? selected->stream.height : 0;
     profileCompanionTargeted_ = !selected || selected->companionTargeted;
     stopViewfinderForPhotos_ = selected && selected->stopViewfinderForPhotos;
     captureStillTemplate_ = recipe.captureStillTemplate;
-    photoIncludePreview_ = recipe.photoIncludePreview;
+    photoIncludePreview_ = recipe.photoIncludePreview && !probe50_;
     const bool companionStream = recipe.companion.has_value();
     const auto companionSize = recipe.companion ? recipe.companion->size : std::nullopt;
     // The companion follows the route's physical camera unless the recipe says otherwise.
@@ -746,9 +751,17 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
         return fail("request", "status=" + statusText(s));
     }
 
-    s = request_->addTarget(rawWindow_);
-    if (!ok(s)) {
-        return fail("add_target", "status=" + statusText(s));
+    if (probe50_) {
+        // The probe's repeating request is the companion alone: no RAW stream runs continuously.
+        if (!companionWindow_ || !profileCompanionTargeted_)
+            return fail("probe50", "reason=needs_targeted_companion");
+        diag(std::string("PROBE50 active=1 outputs=companion+capture companion=") +
+             (companionFacts_ ? "yes" : "unknown") + " opMode=" + std::to_string(recipe.opMode));
+    } else {
+        s = request_->addTarget(rawWindow_);
+        if (!ok(s)) {
+            return fail("add_target", "status=" + statusText(s));
+        }
     }
     if (companionWindow_ && profileCompanionTargeted_) {
         s = request_->addTarget(companionWindow_);

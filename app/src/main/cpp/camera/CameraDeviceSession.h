@@ -58,6 +58,10 @@ class CameraDeviceSession final {
     void setCaptureWindow(ANativeWindow* window) noexcept { captureWindow_ = window; }
     bool stopViewfinderForPhotos() const noexcept { return stopViewfinderForPhotos_; }
     bool hasCaptureStream() const noexcept { return captureConfigured_; }
+    // X14U probe (Nov 26, debug.rawr.probe50 1): a lens with a photo stream runs without its RAW viewfinder stream;
+    // the repeating request targets the companion only and the photo stream is the single RAW stream (PhotonVidCam's
+    // 3x 50 MP layout). No viewfinder picture: the probe only checks AF and the full-size still.
+    bool probe50() const noexcept { return probe50_; }
     // Burst of full-size stills (one per exposure, tagged tagId): copies of the
     // repeating request that also fill the capture stream, with STILL_CAPTURE
     // intent and the lens's still-scope keys.
@@ -150,6 +154,7 @@ class CameraDeviceSession final {
     bool auxJpegConfigured_ = false;
     ACameraMetadata* characteristics_ = nullptr;
     ANativeWindow* rawWindow_ = nullptr;
+    bool probe50_ = false;
     CameraSessionCallbackContext* sessionContext_ = nullptr;
     CameraDeviceCallbackContext* deviceContext_ = nullptr;
     metadata::CameraContextMetadataPtr cameraContext_;

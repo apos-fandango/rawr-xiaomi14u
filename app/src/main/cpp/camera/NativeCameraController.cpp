@@ -6,6 +6,7 @@
 #include "capture/BurstLimits.h"
 
 #include <android/log.h>
+#include <camera/NdkCameraMetadata.h>
 #include <camera/NdkCameraMetadataTags.h>
 #include <sys/system_properties.h>
 
@@ -149,6 +150,7 @@ struct NativeCameraController::Impl final : CameraEventSink {
     bool fullSizeDecisionRepeating = false;
     // X14U 50 MP shot: the carry state the repeating request was last built with (ShotHandover pin).
     bool carrySubmitted = false;
+    uint64_t probe50Results = 0;  // X14U 50 MP probe: results seen (log thinning)
     StillExposureGuard stillExposureGuard;
     std::function<void()> pendingFocus;
     std::function<void()> pendingFocusMode;
@@ -1348,6 +1350,28 @@ struct NativeCameraController::Impl final : CameraEventSink {
         if (!active || callbackGeneration != deviceSession.generation() || !deviceSession.cameraContext() || !result)
             return;
         deviceSession.logKeyResultsOnce(result, [this](const std::string& line) { diag(line); });
+        if (deviceSession.probe50()) {
+            // X14U 50 MP probe: what AF and the lens do on the companion-only preview (every 3rd result) and on the
+            // full-size still (every one with a frame duration over 60 ms).
+            auto u8 = [&](uint32_t tag) -> int {
+                ACameraMetadata_const_entry e{};
+                return ACameraMetadata_getConstEntry(result, tag, &e) == ACAMERA_OK && e.count > 0 ? int(e.data.u8[0]) : -1;
+            };
+            auto f32 = [&](uint32_t tag) -> float {
+                ACameraMetadata_const_entry e{};
+                return ACameraMetadata_getConstEntry(result, tag, &e) == ACAMERA_OK && e.count > 0 ? e.data.f[0] : -1.0f;
+            };
+            auto i64 = [&](uint32_t tag) -> long long {
+                ACameraMetadata_const_entry e{};
+                return ACameraMetadata_getConstEntry(result, tag, &e) == ACAMERA_OK && e.count > 0 ? (long long)e.data.i64[0] : -1LL;
+            };
+            const long long frameNs = i64(ACAMERA_SENSOR_FRAME_DURATION);
+            if (++probe50Results % 3 == 0 || frameNs > 60'000'000LL)
+                diag("PROBE50_RESULT n=" + std::to_string(probe50Results) + " afMode=" + std::to_string(u8(ACAMERA_CONTROL_AF_MODE)) +
+                     " afState=" + std::to_string(u8(ACAMERA_CONTROL_AF_STATE)) + " lensState=" + std::to_string(u8(ACAMERA_LENS_STATE)) +
+                     " focus=" + std::to_string(f32(ACAMERA_LENS_FOCUS_DISTANCE)) + " aeState=" + std::to_string(u8(ACAMERA_CONTROL_AE_STATE)) +
+                     " exposureNs=" + std::to_string(i64(ACAMERA_SENSOR_EXPOSURE_TIME)) + " frameNs=" + std::to_string(frameNs));
+        }
         auto actions = results.process(requestCopy, result, control, deviceSession.cameraContext(),
                                        deviceSession.staticLevels(), deviceSession.captureStaticLevels(), deviceSession.hasCaptureStream(), deviceSession.sensorModeOverridden(),
                                        requests.latestSubmittedSerial());
@@ -1966,8 +1990,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
     }
     void tickControls(int64_t nowMs) {
         std::unique_lock<std::mutex> lock(mutex);
+        // The 50 MP probe never delivers a viewfinder RAW frame: the start ladder would restart it after 4 s.
         if (const auto watched = ladderGeneration.load(std::memory_order_acquire);
-            watched != 0 && watched == deviceSession.generation() &&
+            watched != 0 && watched == deviceSession.generation() && !deviceSession.probe50() &&
             noteLadderOutcomeLocked(startLadder.tick(watched, nowMs), "no_first_frame")) {
             lock.unlock();
             if (callbacks.acquisitionFailed) callbacks.acquisitionFailed(watched, 0);
