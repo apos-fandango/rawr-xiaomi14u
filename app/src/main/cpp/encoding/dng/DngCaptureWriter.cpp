@@ -3,6 +3,7 @@
 
 #include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/system_properties.h>
 #include <tinydng.h>
 #include <unistd.h>
 
@@ -13,6 +14,7 @@
 #include <vector>
 
 #include "encoding/dng/DngMetadataAdapter.h"
+#include "encoding/dng/DngThumbnail.h"
 
 namespace rawrcam::encoding::dng {
 namespace {
@@ -106,6 +108,12 @@ class FdWriteIo {
     std::vector<uint8_t> buffer_;
 };
 
+// X14U: debug.rawr.dng_thumb 0 leaves the embedded thumbnail out (default on).
+bool thumbnailEnabled() {
+    char value[PROP_VALUE_MAX] = {};
+    return !(__system_property_get("debug.rawr.dng_thumb", value) > 0 && value[0] == '0');
+}
+
 std::string errorText(const tinydng_error& e) {
     return e.message[0] ? std::string("tinydng: ") + e.message : std::string("tinydng_write_failed");
 }
@@ -150,6 +158,23 @@ bool DngCaptureWriter::start(std::shared_ptr<const rawrcam::imaging::RawSnapshot
                     done.error = "metadata_adapter: " + adaptError;
                 } else {
                     params->rebind();
+                    // X14U (Nov 26): embedded JPEG thumbnail (IFD1) so Google Photos / galleries show the shot.
+                    std::vector<uint8_t> thumbJpeg;
+                    if (thumbnailEnabled()) {
+                        [[maybe_unused]] const auto thumbStart = std::chrono::steady_clock::now();
+                        uint32_t tw = 0, th = 0;
+                        const auto rgb = makeDngThumbnailRgb(*params, 512, &tw, &th);
+                        if (!rgb.empty()) thumbJpeg = encodeThumbnailJpeg(rgb, tw, th, 85);
+                        if (!thumbJpeg.empty()) {
+                            params->image.thumbnail_jpeg = thumbJpeg.data();
+                            params->image.thumbnail_jpeg_size = thumbJpeg.size();
+                            params->image.thumbnail_width = tw;
+                            params->image.thumbnail_height = th;
+                        }
+                        CAPTURE_TIMING_LOG("DNG_THUMB requestId=%llu size=%ux%u bytes=%zu ms=%.1f",
+                            static_cast<unsigned long long>(frame->requestId), tw, th, thumbJpeg.size(),
+                            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - thumbStart).count());
+                    }
                     diagnostics::CaptureStageTimer writeTiming("dng_encode_and_write", frame->requestId);
                     const auto writeStart = std::chrono::steady_clock::now();
                     tinydng_error err{};

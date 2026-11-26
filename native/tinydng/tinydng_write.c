@@ -954,7 +954,19 @@ struct tinydng_writer {
   size_t scratch_swap_cap;
   uint8_t* scratch_enc;
   size_t scratch_enc_cap;
+  /* Rawr: IFD1 JPEG thumbnail (borrowed), placed after IFD0 in the
+     metadata block. */
+  const uint8_t *thumb;
+  size_t thumb_len;
+  uint32_t thumb_w, thumb_h;
 };
+
+#define TD_THUMB_ENTRIES 12u
+/* IFD1 + BitsPerSample (3 SHORT) + the JPEG, word aligned. */
+static uint64_t td_thumb_block_size(const struct tinydng_writer *w) {
+  if (!w->thumb_len) return 0u;
+  return (2u + TD_THUMB_ENTRIES * 12u + 4u) + 6u + (uint64_t)w->thumb_len + (w->thumb_len & 1u);
+}
 
 static void td_gps_ratio(td_writer *writer, uint16_t tag, const uint32_t (*pairs)[2], size_t count) {
   uint8_t bytes[24];
@@ -2272,6 +2284,14 @@ tinydng_status tinydng_writer_create(tinydng_context *ctx,
       return TINYDNG_E_OOM;
     }
   }
+  if (!w->bigtiff && meta->thumbnail_jpeg && meta->thumbnail_jpeg_size > 0u &&
+      meta->thumbnail_jpeg_size < (64u << 20) && meta->thumbnail_width > 0u &&
+      meta->thumbnail_height > 0u) {
+    w->thumb = meta->thumbnail_jpeg;
+    w->thumb_len = meta->thumbnail_jpeg_size;
+    w->thumb_w = meta->thumbnail_width;
+    w->thumb_h = meta->thumbnail_height;
+  }
   {
     /* Reserve the metadata block. Its size is final here: finish only fills
        segment offsets/counts into already sized arrays. */
@@ -2301,6 +2321,7 @@ tinydng_status tinydng_writer_create(tinydng_context *ctx,
     end += end & 1u;
     end += td_ifd_size(&w->w);
     end += end & 1u;
+    end += td_thumb_block_size(w);
     w->meta_end = end;
     w->data_pos = end;
   }
@@ -2667,6 +2688,68 @@ tinydng_status tinydng_writer_finish(tinydng_writer *w, tinydng_error *err) {
     goto cleanup;
   }
   st = td_writer_emit_ifd(&w->w, &w->sink, ifd_off, extras_base, err);
+  if (st == TINYDNG_OK && w->thumb_len) {
+    /* Rawr: IFD1 = JPEG thumbnail, then BitsPerSample, then the JPEG. */
+    const int be = w->big_endian;
+    const uint64_t ifd0_end = ifd_off + td_ifd_size(&w->w);
+    const uint64_t ifd1 = ifd0_end + (ifd0_end & 1u);
+    const uint64_t ifd1_size = 2u + TD_THUMB_ENTRIES * 12u + 4u;
+    const uint64_t bps_off = ifd1 + ifd1_size;
+    const uint64_t jpeg_off = bps_off + 6u;
+    uint8_t ifd[2u + TD_THUMB_ENTRIES * 12u + 4u];
+    uint8_t bps[6];
+    uint8_t next[4];
+    uint8_t *e = ifd + 2;
+    size_t n = 0;
+    if (jpeg_off + w->thumb_len > w->meta_end || jpeg_off + w->thumb_len > (uint64_t)UINT32_MAX) {
+      td_set_error(err, TINYDNG_E_INTERNAL, TINYDNG_STAGE_WRITE, 0, 0, ifd1,
+                   "thumbnail outgrew its reserved block");
+      st = TINYDNG_E_INTERNAL;
+      goto cleanup;
+    }
+#define TD_THUMB_ENTRY(tag, type, count, value)                         \
+    do {                                                                \
+      uint8_t *p_ = e + n * 12u;                                        \
+      td_put16(p_, (uint16_t)(tag), be);                                \
+      td_put16(p_ + 2, (uint16_t)(type), be);                           \
+      td_put32(p_ + 4, (uint32_t)(count), be);                          \
+      memset(p_ + 8, 0, 4);                                             \
+      if ((type) == TD_TYPE_SHORT && (count) == 1u)                     \
+        td_put16(p_ + 8, (uint16_t)(value), be);                        \
+      else                                                              \
+        td_put32(p_ + 8, (uint32_t)(value), be);                        \
+      n++;                                                              \
+    } while (0)
+    td_put16(ifd, (uint16_t)TD_THUMB_ENTRIES, be);
+    TD_THUMB_ENTRY(254, TD_TYPE_LONG, 1u, 1u);               /* NewSubfileType: reduced */
+    TD_THUMB_ENTRY(256, TD_TYPE_LONG, 1u, w->thumb_w);       /* ImageWidth */
+    TD_THUMB_ENTRY(257, TD_TYPE_LONG, 1u, w->thumb_h);       /* ImageLength */
+    TD_THUMB_ENTRY(258, TD_TYPE_SHORT, 3u, bps_off);         /* BitsPerSample 8,8,8 */
+    TD_THUMB_ENTRY(259, TD_TYPE_SHORT, 1u, 7u);              /* Compression: JPEG */
+    TD_THUMB_ENTRY(262, TD_TYPE_SHORT, 1u, 6u);              /* Photometric: YCbCr */
+    TD_THUMB_ENTRY(273, TD_TYPE_LONG, 1u, jpeg_off);         /* StripOffsets */
+    TD_THUMB_ENTRY(277, TD_TYPE_SHORT, 1u, 3u);              /* SamplesPerPixel */
+    TD_THUMB_ENTRY(278, TD_TYPE_LONG, 1u, w->thumb_h);       /* RowsPerStrip */
+    TD_THUMB_ENTRY(279, TD_TYPE_LONG, 1u, w->thumb_len);     /* StripByteCounts */
+    TD_THUMB_ENTRY(513, TD_TYPE_LONG, 1u, jpeg_off);         /* JPEGInterchangeFormat */
+    TD_THUMB_ENTRY(514, TD_TYPE_LONG, 1u, w->thumb_len);     /* JPEGInterchangeFormatLength */
+#undef TD_THUMB_ENTRY
+    td_put32(ifd + 2u + TD_THUMB_ENTRIES * 12u, 0u, be);     /* last IFD */
+    td_put16(bps, 8u, be);
+    td_put16(bps + 2, 8u, be);
+    td_put16(bps + 4, 8u, be);
+    td_put32(next, (uint32_t)ifd1, be);
+    if (w->sink.write(&w->sink, ifd1, ifd, sizeof(ifd)) != sizeof(ifd)) {
+      st = td_wio_err(&w->sink, ifd1, err);
+    } else if (w->sink.write(&w->sink, bps_off, bps, 6) != 6u) {
+      st = td_wio_err(&w->sink, bps_off, err);
+    } else if (w->sink.write(&w->sink, jpeg_off, w->thumb, w->thumb_len) != w->thumb_len) {
+      st = td_wio_err(&w->sink, jpeg_off, err);
+    } else if (w->sink.write(&w->sink, ifd0_end - 4u, next, 4) != 4u) {
+      /* IFD0's next-IFD pointer (the last 4 bytes of IFD0). */
+      st = td_wio_err(&w->sink, ifd0_end - 4u, err);
+    }
+  }
   if (st == TINYDNG_OK) {
     st = td_writer_put_header(&w->sink, w->big_endian, w->bigtiff, ifd_off, err);
   }

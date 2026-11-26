@@ -362,10 +362,11 @@ add_library(rawrcam_dng_capture STATIC
   encoding/dng/DngMetadataAdapter.cpp
   encoding/dng/DngPixelPayload.cpp
   encoding/dng/DngProvenance.cpp
+  encoding/dng/DngThumbnail.cpp
   encoding/dng/DngCaptureWriter.cpp)
 target_compile_features(rawrcam_dng_capture PRIVATE cxx_std_20)
 target_include_directories(rawrcam_dng_capture PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ../../../../native/tinydng)
-target_link_libraries(rawrcam_dng_capture PRIVATE rawr_tinydng)
+target_link_libraries(rawrcam_dng_capture PRIVATE rawr_tinydng rawrcam_turbojpeg)
 target_compile_options(rawrcam_dng_capture PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 # DNG-to-DNG conversion (lossless re-encode, Bayer downscales), probe and RAW

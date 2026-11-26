@@ -876,6 +876,12 @@ typedef struct tinydng_write_image {
   const tinydng_raw_info *raw; /* optional DNG metadata */
   const tinydng_exif *exif;    /* optional IFD0 descriptive + EXIF sub-IFD */
   const tinydng_gps *gps;
+  /* Rawr: optional baseline JPEG thumbnail, written as IFD1 (NewSubfileType 1,
+     YCbCr JPEG, strips + JPEGInterchangeFormat) inside the metadata block at
+     the front of the file. Classic TIFF only; borrowed until finish. */
+  const uint8_t *thumbnail_jpeg;
+  size_t thumbnail_jpeg_size;
+  uint32_t thumbnail_width, thumbnail_height;
 } tinydng_write_image;
 
 /* Serialize `img` to an in-memory TIFF/DNG buffer (allocated via ctx;
