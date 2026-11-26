@@ -32,7 +32,9 @@ git cherry-pick <first> <next> ...
 | **Horizon Lock / Follow** (portable) | Level video with a fixed crop, or gimbal-like roll follow. | `HorizonLock.h`, `RawDevelopRecorder.cpp`, `PresentRecorder.cpp` | ed338d9, c793e35, 9d04373, 582e91d, 8d3a846, 613d29b, 4d0cbe8 |
 | **Hold to record locked** (portable) | Holding the record button records with exposure, focus and WB locked. | `VideoLockSettings.kt`, `VideoCaptureControls.kt` | 6767f76, bc19e1d |
 | **Video export from bursts** (portable) | HEVC / H.264 / GIF with deflicker, and stacking. | `BurstViewerActivity.kt`, `StackJni.cpp` | 9b4194b |
-| **Real-time profiles** (portable) | Per video mode (1080p30/60, 4K30/60, Open Gate 30), which processing features run while recording: highlight reconstruction, FCC, defringe, denoise, DCP, lens correction, stabilise. Editable in Settings → Video Encoder; defaults from frame-time tests. | `VideoProfiles.kt`, `VideoImageSettings.kt`, `VideoRecorder.cpp` | (next build) |
+| **Real-time profiles** (portable) | Per video mode (1080p30/60, 4K30/60, Open Gate 30), which processing features run while recording: highlight reconstruction, FCC, defringe, denoise, DCP, lens correction, stabilise. Editable in Settings → Video Encoder; defaults from frame-time tests. | `VideoProfiles.kt`, `VideoImageSettings.kt`, `VideoRecorder.cpp` | 59304de, 3e862f6, 2ff756e, e9b8148 |
+| **One-pass fast path** (portable; from utalpt) | RAW → YUV in one GPU pass (~11 ms at 4K against 28–34 ms) for 4K60 and Open Gate 30, used while the mode's real-time profile has every feature off; half-size monitor with it. Logged as `VIDEO_FAST_PATH active=… reason=…`. | `VideoRecorder.cpp`, `VideoFastPath` | a6271d7, 5c6db30, bf93ce3, aa6d2ef, e9b8148 |
+| **24 fps on the 1x** (X14U) | At 24 fps a lens records on its own 4:3 stream instead of its video lens (1xV kills the camera at a fixed 24 fps). `debug.rawr.rec24_video_lens 1` brings the video lens back. | `RawPreviewCoordinator.kt`, `LensOptionsCodec.kt` | ab2f3a7 |
 | **Test switches** | adb switches for encoder tests (`enc_extra_images`, `enc_wait_ms`, `enc_rate`, `enc_prio`, `video_mf_off`, `half_monitor`, `classic_cache`), plus encoder start and thermal logs. | `VideoOutput.cpp`, `NativeAvRecorder.cpp`, `ThermalLog.kt`, `DebugProps.kt` | dfaca25, b68f310, b757f3c, 36253f7 |
 
 ## Photo and capture
@@ -48,9 +50,10 @@ git cherry-pick <first> <next> ...
 | **Pano** (portable) | Guided frame sets (manual or automatic) stitched on the phone with a slim static OpenCV build; the canvas is sized within a memory budget. | `PanoStitchJni.cpp`, `X14uPano.kt` | 81efe85, 5f22430, 86a70c6, 7f97a64, 604483d, 1fa7d07, 1feb45c, d7766de |
 | **Sensor defect concealment** (portable) | Hot or dead pixels hidden in merges (GPU) and listed in DNGs (FixBadPixelsList), using the same rule as single frames. | `rx_defect_patch.comp`, `HotPixelConceal.cpp`, `DngGainMapOpcode.cpp` | a726ab1 |
 | **Faces** (portable) | "Focus on Faces" and "Expose for Faces". | `CameraFocusControls.cpp` | 5a70853 |
+| **Rexture grain evening switch** | `debug.rawr.rx_even 0` skips upstream's grain evening (#132), `debug.rawr.rx_moving 0` the moving-texture restore; logged as `REXTURE_SWITCHES`. See [Rexture colour cast](#rexture-greenmagenta-cast-solved-upstream). | `MergeProcessor.cpp`, `RextureRecorder.cpp` | a333e9d, 6ffb1df, da5a0aa |
 | **Film recipe in DNG** | Spektra recipe written for StopBath. | `DngExif.cpp`, `StopBathSpektra.kt` | cdfabf7, ecbcfab |
 | **DNG thumbnail** (portable) | A 512 px JPEG thumbnail developed from the RAW, embedded as IFD1, so Google Photos and galleries show the shot instead of a grey placeholder. `debug.rawr.dng_thumb 0` leaves it out. | `DngThumbnail.cpp`, `DngCaptureWriter.cpp`, `tinydng_write.c` | 0e19ea4 |
-| **Film recipe strip** | A FILM plate next to the preset plate (dim with film off or in video) opens the film recipes as cards like the presets: tap to apply, long-press drag to reorder (factory and saved share one order), + opens the recipe editor (the film cells and their rulers / choices in the exposure row, live; Cancel · New recipe · Save names it), ··· shows film / print / exposure / format with Edit (same editor, Update), Rename, Duplicate, Delete. Picking or changing a recipe no longer marks a P preset changed. | `X14uFilmRecipes.kt`, `X14uCaptureLayout.kt`, `FilmSimModels.kt` | 987c7dfa |
+| **Film recipe strip** | A FILM plate next to the preset plate (dim with film off or in video) opens the film recipes as cards like the presets: tap to apply, long-press drag to reorder (factory and saved share one order), + opens the recipe editor (the film cells and their rulers / choices in the exposure row, live; Cancel · New recipe · Save names it), ··· shows film / print / exposure / format with Edit (same editor, Update), Rename, Duplicate, Delete. Picking or changing a recipe no longer marks a P preset changed. | `X14uFilmRecipes.kt`, `X14uCaptureLayout.kt`, `FilmSimModels.kt` | 987c7df, 43c57c0, d595415 |
 
 ## Capture screen and controls
 
@@ -84,6 +87,30 @@ git cherry-pick <first> <next> ...
 
 **Lesson:** test on long takes, and log temperature. Short takes and Android's thermal status both hid the problem.
 
+### Open Gate 30 frame drops (solved)
+
+**Symptom:** Open Gate (4096x2304) at 30 fps dropped frames even with every video feature off.
+
+**Cause:** the full path takes about 34 ms a frame there (tonemap 24.5, demosaic 7.2, white balance 2.5; `VIDEO_GPU_STAGES`), over the 33.3 ms budget, with peaks of 88–107 ms.
+
+**Fix:** Open Gate 30 records through utalpt's one-pass fast path (~11 ms), like 4K60. Its real-time profile now defaults to every feature off, because any feature on sends it back to the full path (e9b8148). The fast path's monitor is half size, which is why the viewfinder picture looked small before bf93ce3.
+
+### Rexture green/magenta cast (solved upstream)
+
+**Symptom:** after merging upstream #132, every Rexture shot had a blotchy cast: magenta in bright areas, green or yellow-green elsewhere, with fine yellow/purple mottle. The merged DNG had it too; the saved base frame and HDR+ were fine. Upstream's own debug build showed the same, so it wasn't a merge mistake (our Rexture shaders matched upstream byte for byte).
+
+**What we found:** with `debug.rawr.rx_even 0` (grain evening skipped) the colours matched HDR+; with only the colour bands left untouched it was still mottled. The pass split the image into luma (G) and colour (R−G, B−G) before white balance, so a luma change moved R, G and B by the same raw amount and became a colour shift once the white balance gains were applied (large under warm light).
+
+**Fix:** upstream #162 does the split after white balance (cherry-picked as 6ffb1df). Tested on the same wall: Rexture matches HDR+. The `rx_even` switch stays as a fallback.
+
+### DNG thumbnails (solved)
+
+**Symptom:** our DNGs showed as grey placeholders in Google Photos (Lightroom drew its own); another X14U user reported Xiaomi Gallery and file managers crashing on a folder with them (Aves worked).
+
+**Cause:** the DNGs had no embedded preview image. Galleries and Android's media scanner read a small JPEG from the file instead of decoding the RAW.
+
+**Fix:** a 512 px JPEG thumbnail developed from the RAW, written as IFD1 near the start of the file (0e19ea4). Confirmed in Google Photos, Xiaomi Gallery and F-Stop. Older DNGs stay grey.
+
 ### 50 MP findings
 
 - **1x:** the phone's full-size RAW mode exists only at f/2. Other apertures only come through the phone's own processed route, so the 50 mp chip locks Aperture to f/2.
@@ -93,9 +120,10 @@ git cherry-pick <first> <next> ...
 ## Known issues and open ends
 
 - **One camera frame at record start:** with YUV, 5 of 7 takes lost one camera frame in the first quarter second (`INGRESS_QUEUE_PRESSURE rawDropped=1`). It's not the YUV setup time (moved outside the lock in 46015fb, and it still happened). Next step: per-frame GPU and import timing for the first 2 s of a take.
-- **24 fps on the 1x:** the 1x's video lens (1xV, the 16:9 4096x2304 stream) kills the camera a second after a fixed 24 fps range (diagnostics 20261125_112228 and _131228: `Device error received, code 1`, then `encoder output format missing csd-0`, since no frame ever reaches the encoder). The other lenses record 24 fps on their 4:3 stream, so at 24 fps a lens runs on its own stream instead of its video lens (`adb shell setprop debug.rawr.rec24_video_lens 1` brings the old behavior back).
+- **24 fps on the 1x video lens:** the 1x's video lens (1xV, the 16:9 4096x2304 stream) kills the camera a second after a fixed 24 fps range (diagnostics 20261125_112228 and _131228: `Device error received, code 1`, then `encoder output format missing csd-0`, since no frame ever reaches the encoder). Worked around in ab2f3a7: at 24 fps a lens records on its own 4:3 stream. The cause in the camera HAL is unknown.
+- **Idle viewfinder at 60 fps:** drops about one camera frame a second; not investigated yet.
 - **Heat:** the RAW viewfinder runs the GPU about two thirds busy even when idle. Candidates to cut: the HDR+ ring in video (`video_mf_off`), the half-size monitor (`half_monitor`), and UI redraws while recording.
-- **Upstream and forks:** utalpt's `yuv-probe` branch has a one-pass RAW→YUV fast path (4K60), a clean recording view, a Gyroflow log and more, none of them ported yet.
+- **Upstream and forks:** from utalpt, the YUV input and the one-pass fast path are in; his clean recording view, Gyroflow log, WB picker (tap-to-neutralise) and the new look sheet are not ported yet. Upstream is merged up to #162 (skipped: #160 OPPO, vivo, Samsung and UI tooling).
 
 ## Branches
 
