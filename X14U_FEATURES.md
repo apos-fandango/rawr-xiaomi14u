@@ -50,7 +50,7 @@ git cherry-pick <first> <next> ...
 | **Faces** (portable) | "Focus on Faces" and "Expose for Faces". | `CameraFocusControls.cpp` | 5a70853 |
 | **Film recipe in DNG** | Spektra recipe written for StopBath. | `DngExif.cpp`, `StopBathSpektra.kt` | cdfabf7, ecbcfab |
 | **DNG thumbnail** (portable) | A 512 px JPEG thumbnail developed from the RAW, embedded as IFD1, so Google Photos and galleries show the shot instead of a grey placeholder. `debug.rawr.dng_thumb 0` leaves it out. | `DngThumbnail.cpp`, `DngCaptureWriter.cpp`, `tinydng_write.c` | 0e19ea4 |
-| **Film recipe strip** | A FILM plate next to the preset plate (dim with film off or in video) opens the film recipes as cards like the presets: tap to apply, long-press drag to reorder (factory and saved share one order), + saves the live film settings, ··· shows film / print / exposure / format with Update, Rename, Duplicate, Delete. Picking or changing a recipe no longer marks a P preset changed. | `X14uFilmRecipes.kt`, `X14uCaptureLayout.kt`, `FilmSimModels.kt` | 987c7dfa |
+| **Film recipe strip** | A FILM plate next to the preset plate (dim with film off or in video) opens the film recipes as cards like the presets: tap to apply, long-press drag to reorder (factory and saved share one order), + opens the recipe editor (the film cells and their rulers / choices in the exposure row, live; Cancel · New recipe · Save names it), ··· shows film / print / exposure / format with Edit (same editor, Update), Rename, Duplicate, Delete. Picking or changing a recipe no longer marks a P preset changed. | `X14uFilmRecipes.kt`, `X14uCaptureLayout.kt`, `FilmSimModels.kt` | 987c7dfa |
 
 ## Capture screen and controls
 

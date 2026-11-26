@@ -495,6 +495,21 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         override fun rename(id: String, name: String) { settingsEditor.update { it.withFilmPresetRenamed(id, name) } }
         override fun delete(id: String) { settingsEditor.update { it.withFilmPresetDeleted(id) } }
         override fun move(from: Int, to: Int) { settingsEditor.update { it.withFilmPresetMoved(from, to) } }
+
+        /** Film look and recipe from before the editor opened. */
+        private var beforeEdit: Pair<com.rawr.camera.settings.model.FilmSimLook, String?>? = null
+
+        override fun beginEdit(id: String?) {
+            val v = settingsEditor.state.value
+            beforeEdit = v.filmSimLook to v.selectedFilmPresetId
+            if (id != null) settingsEditor.update { it.withFilmPreset(id) }
+        }
+        override fun cancelEdit() {
+            val (look, selected) = beforeEdit ?: return
+            beforeEdit = null
+            settingsEditor.update { it.copy(filmSimLook = look, selectedFilmPresetId = selected) }
+        }
+        override fun finishEdit() { beforeEdit = null }
     }
 
     private fun editPresets(edit: (SettingsValues, MutableList<com.rawr.camera.settings.model.CapturePreset>) -> String?) {

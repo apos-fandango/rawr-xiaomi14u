@@ -88,6 +88,12 @@ interface FilmRecipeActions {
     fun rename(id: String, name: String) {}
     fun delete(id: String) {}
     fun move(from: Int, to: Int) {}
+    /** The recipe editor opens: remember the live film settings (Cancel puts them back); [id] = edit that recipe. */
+    fun beginEdit(id: String?) {}
+    /** Editor cancelled: the film settings from before it opened. */
+    fun cancelEdit() {}
+    /** Editor saved: forget what was remembered. */
+    fun finishEdit() {}
 
     companion object {
         val None = object : FilmRecipeActions {}
@@ -307,14 +313,13 @@ internal fun X14uFilmRecipeSaveSheet(
 }
 
 /**
- * A recipe's details (··· or a tap on the active card): film, print, exposure and format as tiles, then Update (saved
- * and active only), Rename, Duplicate and Delete (saved only; asked once more).
+ * A recipe's details (··· or a tap on the active card): film, print, exposure and format as tiles, then Edit (opens
+ * the recipe editor on it), Rename and Delete (saved only; Delete asked once more) and Duplicate.
  */
 @Composable
 internal fun X14uFilmRecipeDetailsSheet(
     item: FilmRecipeItem,
-    active: Boolean,
-    onUpdate: () -> Unit,
+    onEdit: () -> Unit,
     onRename: (String) -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
@@ -353,12 +358,12 @@ internal fun X14uFilmRecipeDetailsSheet(
                 })
             }
             else -> X14uSegments(
-                labels = listOf("Update", "Rename", "Duplicate", "Delete"),
+                labels = listOf("Edit", "Rename", "Duplicate", "Delete"),
                 selected = null, emphasis = null,
-                enabled = { i -> if (i == 2) true else item.user && (i != 0 || active) },
+                enabled = { i -> i == 2 || item.user },
                 onSelect = { i ->
                     when (i) {
-                        0 -> onUpdate()
+                        0 -> onEdit()
                         1 -> renaming = true
                         2 -> onDuplicate()
                         else -> confirm = true
@@ -366,5 +371,35 @@ internal fun X14uFilmRecipeDetailsSheet(
                 }
             )
         }
+    }
+}
+
+/**
+ * The recipe editor's header (over the film cells): Cancel, what is edited ("New recipe" or "F3 · Name"), and Save
+ * (new) or Update (a saved recipe).
+ */
+@Composable
+internal fun X14uFilmEditHeader(
+    title: String,
+    saveLabel: String,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalCaptureHaptics.current
+    Box(
+        modifier
+            .padding(horizontal = 10.dp)
+            .background(X14uPanelStyle.Panel, RoundedCornerShape(12.dp))
+            .testTag("x14u_film_edit_header")
+    ) {
+        Text("Cancel", fontFamily = X14uFont, fontSize = dpText(13.5f), color = Color.White.copy(alpha = .75f),
+            modifier = Modifier.align(Alignment.CenterStart).clickable { haptics.selection(); onCancel() }
+                .padding(horizontal = 12.dp, vertical = 8.dp))
+        Text(title, fontFamily = X14uFont, fontSize = dpText(14f), color = Color.White, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.align(Alignment.Center).padding(horizontal = 80.dp))
+        Text(saveLabel, fontFamily = X14uFont, fontSize = dpText(13.5f), color = CaptureColors.Accent,
+            modifier = Modifier.align(Alignment.CenterEnd).clickable { haptics.selection(); onSave() }
+                .padding(horizontal = 12.dp, vertical = 8.dp))
     }
 }

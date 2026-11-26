@@ -256,6 +256,7 @@ private sealed interface X14uEditor {
 /** The preset sheet that saves a new preset (otherwise the sheet holds a preset's id). */
 private const val PRESET_SAVE = "+save"
 private const val FILM_SAVE = "+film"
+private const val FILM_NEW = "+new"
 
 private object X14uGeometry {
     /** Stock content height (status and navigation bars excluded) the dp values below were measured at. */
@@ -470,6 +471,8 @@ internal fun X14uCaptureLayout(
     // X14U (Nov 26): the film recipe strip (FILM plate) and its sheets (FILM_SAVE or a recipe id).
     var filmOpen by remember { mutableStateOf(false) }
     var filmSheet by remember { mutableStateOf<String?>(null) }
+    // The recipe editor (+ in the strip, or Edit in a recipe's details): FILM_NEW or the edited recipe's id.
+    var filmEdit by remember { mutableStateOf<String?>(null) }
     val closeAll: () -> Boolean = {
         val open = selected != null || panel != null || toolsOpen || cropOpen || presetsOpen || presetSheet != null || timedOpen ||
             filmOpen || filmSheet != null
@@ -500,6 +503,8 @@ internal fun X14uCaptureLayout(
         toolsChoice = null
     }
     val film = state.filmSimEnabled && !isVideo && filmQuick != null
+    // The recipe editor takes the exposure row (film cells) and the slot (their editors), its header above.
+    val filmEditing = filmEdit != null && film
     // Photo (not Pro): the AMSI row instead of the full exposure row.
     // Pano runs Photo's simpler row; its set locks the controls that must match frame to frame.
     val pano = !isVideo && LocalCaptureExtras.current.pano
@@ -773,6 +778,13 @@ internal fun X14uCaptureLayout(
     val presetsUi = LocalCaptureExtras.current.presets
     val filmRecipes = LocalCaptureExtras.current.filmRecipes
     val filmRecipeActions = LocalCaptureExtras.current.filmRecipeActions
+    // Film off or video while the recipe editor is open: it closes, the film settings stay as they are.
+    LaunchedEffect(film) {
+        if (!film && filmEdit != null) {
+            filmRecipeActions.finishEdit()
+            filmEdit = null
+        }
+    }
     val presetActions = LocalCaptureExtras.current.presetActions
     var pendingPreset by remember { mutableStateOf<com.rawr.camera.settings.model.PresetCamera?>(null) }
     val apertureLabelNow = lensOptions?.options?.getOrNull(apertureRowIndex)?.let { it.choices.getOrNull(it.selected)?.label?.trim() }
@@ -936,7 +948,11 @@ internal fun X14uCaptureLayout(
     val cells: List<X14uCell>
     val editorFor: (String) -> X14uEditor
     when (panel) {
-        null -> {
+        null -> if (filmEditing) {
+            val q = filmQuick!!
+            cells = configCells(q)
+            editorFor = { key -> configEditor(key, q, filmActions(onFilmEvent)) }
+        } else {
             val all = exposureCells(state, quick, lensOptions, fiftyMp)
             val photoCells = if (simplePhoto) {
                 // Photo: only the cells the exposure mode lets you set (A: EV · M: SS, ISO · S: SS, EV · I: ISO, EV), plus F.
@@ -1079,7 +1095,8 @@ internal fun X14uCaptureLayout(
         }
     }
     LaunchedEffect(Unit) { com.rawr.camera.integration.GripEvents.dialSteps.collect { dialStep(it) } }
-    val currentKey = if (panel == null) selected?.takeIf { k -> (k == PHOTO_FOCUS_KEY && simplePhoto) || (k == ZOOM_KEY && zoomOn) || cells.any { it.key == k } } else (panelKey?.takeIf { k -> cells.any { it.key == k } } ?: cells.firstOrNull()?.key)
+    val currentKey = if (panel == null && filmEditing) selected?.takeIf { k -> cells.any { it.key == k } } ?: cells.firstOrNull()?.key
+    else if (panel == null) selected?.takeIf { k -> (k == PHOTO_FOCUS_KEY && simplePhoto) || (k == ZOOM_KEY && zoomOn) || cells.any { it.key == k } } else (panelKey?.takeIf { k -> cells.any { it.key == k } } ?: cells.firstOrNull()?.key)
 
     BoxWithConstraints(modifier) {
         val s = ((maxHeight - cutoutTop) / X14uGeometry.reference).coerceIn(.8f, 1.25f)
@@ -1111,7 +1128,7 @@ internal fun X14uCaptureLayout(
         val rowY = bottom + 2.dp * s
         // Presets open: the strip takes the readout row and the slot (the exposure row and lens row hide, as stock).
         // The film recipe strip takes the same place (photo with film on).
-        val filmStripOpen = filmOpen && film
+        val filmStripOpen = filmOpen && film && !filmEditing
         val presetsShown = (presetsOpen || filmStripOpen) && !recordingLock && !panoLocked
         // Pano set (Nov 19): the panorama forming takes the readout row and the slot.
         val panoStripShown = pano && panoSet.frames > 0
@@ -1306,7 +1323,7 @@ internal fun X14uCaptureLayout(
                             else Modifier.align(Alignment.TopCenter).padding(top = 10.dp)
                     )
                 }
-                if (!presetsShown) X14uLensRow(
+                if (!presetsShown && !(panel == null && filmEditing)) X14uLensRow(
                     state = state,
                     dispatch = dispatch,
                     quick = quick,
@@ -1497,6 +1514,12 @@ internal fun X14uCaptureLayout(
                         onSave = { name ->
                             filmRecipeActions.save(name)
                             filmSheet = null
+                            if (filmEdit != null) {
+                                filmRecipeActions.finishEdit()
+                                filmEdit = null
+                                selected = null
+                                filmOpen = true
+                            }
                         },
                         onClose = { filmSheet = null },
                         modifier = sheetModifier
@@ -1506,10 +1529,12 @@ internal fun X14uCaptureLayout(
                     if (item == null) filmSheet = null
                     else X14uFilmRecipeDetailsSheet(
                         item = item,
-                        active = item.id == filmRecipes.activeId,
-                        onUpdate = {
-                            filmRecipeActions.update(item.id)
+                        onEdit = {
                             filmSheet = null
+                            filmRecipeActions.beginEdit(item.id)
+                            filmOpen = false
+                            selected = null
+                            filmEdit = item.id
                         },
                         onRename = { filmRecipeActions.rename(item.id, it) },
                         onDuplicate = {
@@ -1539,6 +1564,29 @@ internal fun X14uCaptureLayout(
             }
             // Classic video: the readouts dim while recording, so the picture stands out (the shutter row stays bright).
             val rowModifier = Modifier.fillMaxWidth().offset(y = rowY).height(rowHeight)
+            if (panel == null && filmEditing && !presetsShown) {
+                val editing = filmRecipes.items.firstOrNull { it.id == filmEdit }
+                X14uFilmEditHeader(
+                    title = editing?.let { "${it.label} · ${it.name}" } ?: "New recipe",
+                    saveLabel = if (editing != null) "Update" else "Save",
+                    onCancel = {
+                        filmRecipeActions.cancelEdit()
+                        filmEdit = null
+                        selected = null
+                        filmOpen = true
+                    },
+                    onSave = {
+                        if (editing != null) {
+                            filmRecipeActions.update(editing.id)
+                            filmRecipeActions.finishEdit()
+                            filmEdit = null
+                            selected = null
+                            filmOpen = true
+                        } else filmSheet = FILM_SAVE
+                    },
+                    modifier = Modifier.fillMaxWidth().offset(y = rowY - 40.dp).height(36.dp)
+                )
+            }
             if (presetsShown && filmStripOpen) {
                 Box(Modifier.fillMaxWidth().offset(y = rowY).height(slotY + slotHeight - rowY)) {
                     X14uFilmRecipeStrip(
@@ -1546,7 +1594,13 @@ internal fun X14uCaptureLayout(
                         enabled = true,
                         onApply = { filmRecipeActions.apply(it.id) },
                         onDetails = { filmSheet = it.id },
-                        onSaveNew = { filmSheet = FILM_SAVE },
+                        onSaveNew = {
+                            // + opens the recipe editor from the live film settings (Save names it).
+                            filmRecipeActions.beginEdit(null)
+                            filmOpen = false
+                            selected = null
+                            filmEdit = FILM_NEW
+                        },
                         onUpdate = { filmRecipes.activeId?.let(filmRecipeActions::update) },
                         onRevert = { filmRecipeActions.revert() },
                         onMove = filmRecipeActions::move
@@ -1566,6 +1620,9 @@ internal fun X14uCaptureLayout(
                         onMove = presetActions::move
                     )
                 }
+            } else if (panel == null && filmEditing) {
+                X14uCellRow(cells = cells, selectedKey = currentKey, orientation = orientation, modifier = rowModifier,
+                    upright = true, onTap = { selected = it })
             } else if (panoStripShown) {
                 // Pano set: the panorama forming takes the readout row and the modes (both locked meanwhile).
                 X14uPanoStrip(panoSet, orientation, Modifier.fillMaxWidth().offset(y = rowY).height(slotY + slotHeight - rowY))
