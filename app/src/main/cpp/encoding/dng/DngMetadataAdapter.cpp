@@ -8,6 +8,10 @@
 #include <sstream>
 #include <vector>
 
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif
+
 #include "encoding/LensMetadata.h"
 #include "encoding/dng/DngExif.h"
 #include "develop/HotPixelConceal.h"
@@ -439,7 +443,18 @@ std::optional<TinyDngWriteParams> makeTinyDngWriteParams(const rawrcam::imaging:
     // X14U (Nov 19): sensor defects as a FixBadPixelsList, so DNG readers hide them as Rawr's own JPEG does. The
     // camera's map when it has one; else (X14U: none on any camera) found in this frame by the JPEG's rule. The CFA
     // bytes stay as captured.
-    if (frame.width * sizeof(uint16_t) == frame.packedRowStrideBytes) {
+    // Off by default since Nov 26: Android's DNG decoding (Google Photos, Xiaomi Gallery) rejects a DNG that holds
+    // it, though the list follows the spec (a 3x 50 MP single frame with 20 points: grey in both; the same file with
+    // an empty OpcodeList1 opens). Merges never wrote it, which made it look random. debug.rawr.dng_badpixels 1
+    // writes it again (Lightroom and Windows read it).
+    bool writeBadPixels = false;
+#ifdef __ANDROID__
+    {
+        char value[PROP_VALUE_MAX] = {};
+        writeBadPixels = __system_property_get("debug.rawr.dng_badpixels", value) > 0 && value[0] == '1';
+    }
+#endif
+    if (writeBadPixels && frame.width * sizeof(uint16_t) == frame.packedRowStrideBytes) {
         std::vector<int32_t> found;
         if (frame.metadata.hotPixelMap.empty()) {
             float blackMean = 0.0f;

@@ -48,7 +48,7 @@ git cherry-pick <first> <next> ...
 | **Burst** (portable) | Hold to shoot at 10/20/30 fps, a pre-capture ring (PRE 1–3 s), Pixel-style stacks Google Photos groups, a private store with a viewer, develop in Rawr or another editor. | `BurstStore.kt`, `BurstViewerActivity.kt`, `PrecaptureRing.h`, `SingleFrameCoordinator.cpp` | 935d75d, f0bd25c, 12a150b, c4223f0, 3d523df, a180961, dcd16ae, e799e09, 3080a17, 752975d |
 | **Timed burst** (portable) | Intervalometer. | `TimedBurstSettings.kt` | a92b20b |
 | **Pano** (portable) | Guided frame sets (manual or automatic) stitched on the phone with a slim static OpenCV build; the canvas is sized within a memory budget. | `PanoStitchJni.cpp`, `X14uPano.kt` | 81efe85, 5f22430, 86a70c6, 7f97a64, 604483d, 1fa7d07, 1feb45c, d7766de |
-| **Sensor defect concealment** (portable) | Hot or dead pixels hidden in merges (GPU) and listed in DNGs (FixBadPixelsList), using the same rule as single frames. | `rx_defect_patch.comp`, `HotPixelConceal.cpp`, `DngGainMapOpcode.cpp` | a726ab1 |
+| **Sensor defect concealment** (portable) | Hot or dead pixels hidden in merges (GPU), using the same rule as single frames. Listing them in DNGs (FixBadPixelsList) is off by default since Android galleries reject such DNGs ([DNGs in Android galleries](#dngs-in-android-galleries-solved)); `debug.rawr.dng_badpixels 1` writes it. | `rx_defect_patch.comp`, `HotPixelConceal.cpp`, `DngGainMapOpcode.cpp` | a726ab1 |
 | **Faces** (portable) | "Focus on Faces" and "Expose for Faces". | `CameraFocusControls.cpp` | 5a70853 |
 | **Rexture grain evening switch** | `debug.rawr.rx_even 0` skips upstream's grain evening (#132), `debug.rawr.rx_moving 0` the moving-texture restore; logged as `REXTURE_SWITCHES`. See [Rexture colour cast](#rexture-greenmagenta-cast-solved-upstream). | `MergeProcessor.cpp`, `RextureRecorder.cpp` | a333e9d, 6ffb1df, da5a0aa |
 | **Film recipe in DNG** | Spektra recipe written for StopBath. | `DngExif.cpp`, `StopBathSpektra.kt` | cdfabf7, ecbcfab |
@@ -103,13 +103,15 @@ git cherry-pick <first> <next> ...
 
 **Fix:** upstream #162 does the split after white balance (cherry-picked as 6ffb1df). Tested on the same wall: Rexture matches HDR+. The `rx_even` switch stays as a fallback.
 
-### DNG thumbnails (solved)
+### DNGs in Android galleries (solved)
 
 **Symptom:** our DNGs showed as grey placeholders in Google Photos (Lightroom drew its own); another X14U user reported Xiaomi Gallery and file managers crashing on a folder with them (Aves worked).
 
 **Cause:** the DNGs had no embedded preview image. Galleries and Android's media scanner read a small JPEG from the file instead of decoding the RAW.
 
 **Fix:** a 512 px JPEG thumbnail developed from the RAW, written as IFD1 near the start of the file (0e19ea4). Confirmed in Google Photos, Xiaomi Gallery and F-Stop. Older DNGs stay grey.
+
+**Second cause, single frames only:** some DNGs still showed grey and wouldn't open in Google Photos or Xiaomi Gallery (fine in Lightroom and Windows), seemingly at random. The failing ones held our hot-pixel list (FixBadPixelsList in OpcodeList1; 20 points on a 3x 50 MP single frame). Merges never write it, which made it look random. The list follows the DNG spec, but Android's DNG decoding rejects it: the same file with only an empty OpcodeList1 opens (the other X14U user found Xiaomi Gallery's libdng_sdk aborting on it too). The list is now left out by default.
 
 ### 50 MP findings
 
