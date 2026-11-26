@@ -49,6 +49,7 @@ git cherry-pick <first> <next> ...
 | **Sensor defect concealment** (portable) | Hot or dead pixels hidden in merges (GPU) and listed in DNGs (FixBadPixelsList), using the same rule as single frames. | `rx_defect_patch.comp`, `HotPixelConceal.cpp`, `DngGainMapOpcode.cpp` | a726ab1 |
 | **Faces** (portable) | "Focus on Faces" and "Expose for Faces". | `CameraFocusControls.cpp` | 5a70853 |
 | **Film recipe in DNG** | Spektra recipe written for StopBath. | `DngExif.cpp`, `StopBathSpektra.kt` | cdfabf7, ecbcfab |
+| **DNG thumbnail** (portable) | A 512 px JPEG thumbnail developed from the RAW, embedded as IFD1, so Google Photos and galleries show the shot instead of a grey placeholder. `debug.rawr.dng_thumb 0` leaves it out. | `DngThumbnail.cpp`, `DngCaptureWriter.cpp`, `tinydng_write.c` | 0e19ea4 |
 
 ## Capture screen and controls
 
