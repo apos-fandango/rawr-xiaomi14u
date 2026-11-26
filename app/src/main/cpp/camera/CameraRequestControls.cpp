@@ -7,6 +7,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include <sys/system_properties.h>
+
 #include "camera/Camera2PriorityCompat.h"
 #include "camera/CameraAePriority.h"
 #include "camera/CameraWorkarounds.h"
@@ -355,7 +357,18 @@ CameraControlApplyResult applyCameraControlState(CameraRequest* request, const C
     // X14U 50 MP shot: the lens goes to where the 12 MP view had focused (AF: AF OFF + its measured distance; MF: the
     // user's distance).
     const bool manualFocus = state.focusMode == FocusControlMode::Manual;
-    if (pin && (manualFocus || pin->focusDiopters) && state.capabilities.manualFocusSupported) {
+    // Test (Nov 26): debug.rawr.shot50_focus 0 sends no distance: AF AUTO with no trigger, so the HAL has no reason to
+    // move the lens and it may stay where the 12 MP view focused it (the full-size mode maps diopters to the motor
+    // differently, so a sent distance lands elsewhere). 1 (default): AF OFF + distance as below.
+    char focusProp[PROP_VALUE_MAX] = {};
+    const bool sendDistance =
+        !(__system_property_get("debug.rawr.shot50_focus", focusProp) > 0 && focusProp[0] == '0');
+    if (pin && !sendDistance && state.capabilities.manualFocusSupported) {
+        const uint8_t afAuto = ACAMERA_CONTROL_AF_MODE_AUTO;
+        const uint8_t idle = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
+        result.focusStatus = request->setU8(ACAMERA_CONTROL_AF_MODE, 1, &afAuto);
+        (void)request->setU8(ACAMERA_CONTROL_AF_TRIGGER, 1, &idle);
+    } else if (pin && (manualFocus || pin->focusDiopters) && state.capabilities.manualFocusSupported) {
         const uint8_t afOff = ACAMERA_CONTROL_AF_MODE_OFF;
         const uint8_t idle = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
         const float diopters = manualFocus ? requestedFocusDiopters(state) : *pin->focusDiopters;
