@@ -613,9 +613,11 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
     std::vector<SessionOutput> outputs;
     {
         char value[PROP_VALUE_MAX] = {};
-        const bool set = captureWindow_ && __system_property_get("debug.rawr.probe50", value) > 0;
-        probe50_ = set && (value[0] == '1' || value[0] == '2');
-        probe50RawOnlyStill_ = set && value[0] == '2';
+        // The lens's companionViewfinder flag, or (testing) debug.rawr.probe50 1 / 2 on any lens with a photo stream.
+        const bool profile = selected && selected->companionViewfinder;
+        const bool set = !profile && __system_property_get("debug.rawr.probe50", value) > 0;
+        probe50_ = captureWindow_ && (profile || (set && (value[0] == '1' || value[0] == '2')));
+        probe50RawOnlyStill_ = probe50_ && (profile || value[0] == '2');
     }
     if (!probe50_) outputs.push_back({rawWindow_, physicalCameraId, recipe.rawStreamUseCase});
     const uint32_t rawWidth = selected ? selected->stream.width : 0, rawHeight = selected ? selected->stream.height : 0;

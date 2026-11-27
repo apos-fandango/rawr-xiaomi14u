@@ -85,7 +85,7 @@ class SwapchainRenderer final {
     // recordCompanion then draws it into an acquired swapchain image, aspect-fit and turned like the RAW viewfinder.
     bool prepareCompanion(AHardwareBuffer* buffer, uint32_t width, uint32_t height);
     void recordCompanion(VkCommandBuffer command, uint32_t imageIndex, AHardwareBuffer* buffer,
-                         int sensorOrientationDegrees, int displayRotationDegrees);
+                         int sensorOrientationDegrees, int displayRotationDegrees, float zoom);
     // Drops every imported companion buffer. The caller has waited for the GPU work that sampled them.
     void releaseCompanionImages() noexcept;
     // Lens calibration the last live-viewfinder frame was undistorted with

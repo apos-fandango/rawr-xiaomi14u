@@ -293,6 +293,11 @@ data class LensSession(
     /** "configured" or "closed"; null keeps the default (closed with high-res photos). Needs a [gate]. */
     val gateHold: String? = null,
     val stopViewfinderForPhotos: Boolean = false,
+    /**
+     * X14U 3x 50 MP layout: the viewfinder is the camera-processed companion stream (the RAW viewfinder doesn't
+     * run) and the photo stream is used only by stills. Needs a photo stream and a targeted companion.
+     */
+    val companionViewfinder: Boolean = false,
     /** Provider behaviours this lens avoids, from [CAMERA_WORKAROUNDS]. */
     val workarounds: List<String> = emptyList()
 )
@@ -413,6 +418,7 @@ fun validateLensProfile(lens: LensProfile, others: List<LensProfile>): List<Stri
     if (lens.resolvedCameraApi() == "java") {
         if (session.stopViewfinderForPhotos) add("Java Camera2 can't stop the viewfinder stream for photos")
     }
+    if (session.companionViewfinder && streams.photo == null) add("The camera-processed viewfinder needs a photo stream")
     if (session.opMode < 0 || session.opMode == 1 || session.opMode == 2) add("Operating mode must be 0 or 3 and above")
     if (session.frameRate !in 0..MAX_FRAME_RATE) add("Fixed frame rate must be 0 to $MAX_FRAME_RATE")
     if (listOf(streams.raw.useCase, streams.photo?.useCase ?: 0, companion.useCase, streams.auxJpeg?.useCase ?: 0)

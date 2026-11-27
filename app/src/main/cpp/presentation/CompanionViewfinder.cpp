@@ -29,6 +29,7 @@ struct CompanionPush {
     uint32_t quarterTurns;
     float srcAspect;
     float dstAspect;
+    float zoom;
 };
 }  // namespace
 
@@ -360,7 +361,7 @@ bool SwapchainRenderer::prepareCompanion(AHardwareBuffer* buffer, uint32_t width
 }
 
 void SwapchainRenderer::recordCompanion(VkCommandBuffer command, uint32_t imageIndex, AHardwareBuffer* buffer,
-                                        int sensorOrientationDegrees, int displayRotationDegrees) {
+                                        int sensorOrientationDegrees, int displayRotationDegrees, float zoom) {
     CompanionImage* source = findCompanion(buffer);
     if (!source || imageIndex >= swapImages_.size() || companionPipeline_ == VK_NULL_HANDLE)
         throw std::logic_error("recordCompanion without a prepared companion buffer");
@@ -405,7 +406,7 @@ void SwapchainRenderer::recordCompanion(VkCommandBuffer command, uint32_t imageI
     const uint32_t turns = rawrcam::geometry::presentationQuarterTurns(sensorOrientationDegrees, displayRotationDegrees);
     const bool quarter = (turns & 1u) != 0;
     const float sw = float(quarter ? source->height : source->width), sh = float(quarter ? source->width : source->height);
-    const CompanionPush push{turns, sw / sh, float(swapExtent_.width) / float(swapExtent_.height)};
+    const CompanionPush push{turns, sw / sh, float(swapExtent_.width) / float(swapExtent_.height), zoom};
     vkCmdPushConstants(command, companionLayout_, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push), &push);
     vkCmdDraw(command, 3, 1, 0, 0);
     vkCmdEndRenderPass(command);

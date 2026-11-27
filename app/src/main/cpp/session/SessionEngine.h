@@ -112,6 +112,8 @@ class SessionEngine {
     }
     // Full-size route availability and outstanding RAW acquisition, for the hold notice.
     std::pair<bool, bool> fullSizeCaptureState();
+    // The 3x 50 MP viewfinder is showing camera-processed frames (UI: the "Camera preview" note).
+    bool companionViewfinderActive() const noexcept { return companionViewfinderActive_.load(std::memory_order_relaxed); }
     std::pair<uint64_t, int64_t> livePreviewState() const {
         return swapchainRenderer_.livePresentation();
     }
@@ -352,6 +354,7 @@ class SessionEngine {
         uint32_t next = 0;
         uint64_t frames = 0, skipped = 0;
     } companion_;
+    std::atomic<bool> companionViewfinderActive_{false};
     void onCompanionFrame(AImage* image);
     void releaseCompanionFrames();
     void releaseCompanionFramesLocked();

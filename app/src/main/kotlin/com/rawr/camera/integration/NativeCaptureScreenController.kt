@@ -604,6 +604,7 @@ class NativeCaptureScreenController(
                 fullSizeCaptureSerial = snapshot.fullSizeCaptureSerial,
                 fullSizeExposurePending = snapshot.fullSizeExposurePending,
                 restoringPreview = snapshot.restoringPreview,
+                companionViewfinder = snapshot.companionViewfinder,
                 fullSizeCapture = snapshot.fullSizeCapture,
                 fullSizeCapturePending = snapshot.fullSizeCapturePending,
                 fullSizeBinnedStills = maxOf(current.fullSizeBinnedStills, snapshot.fullSizeBinnedStills),

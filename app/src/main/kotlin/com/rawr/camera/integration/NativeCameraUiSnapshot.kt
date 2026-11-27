@@ -91,6 +91,8 @@ internal data class NativeCameraUiSnapshot(
     val fullSizeLastExposureTimestamp: Long = 0,
     val livePreviewGeneration: Long = 0,
     val livePreviewTimestamp: Long = 0,
+    /** X14U 3x 50 MP: the viewfinder shows the camera's own processed preview, not the RAW look. */
+    val companionViewfinder: Boolean = false,
     /** Full-size captures the camera returned binned (monotonic counters, see FullSizeFallbacks.h). */
     val fullSizeBinnedStills: Long = 0L,
     val fullSizeBurstsToSingle: Long = 0L,
@@ -205,6 +207,7 @@ internal data class NativeCameraUiSnapshot(
                 fullSizeLastExposureTimestamp = j.optLong("fullSizeLastExposureTimestamp"),
                 livePreviewGeneration = j.optLong("livePreviewGeneration"),
                 livePreviewTimestamp = j.optLong("livePreviewTimestamp"),
+                companionViewfinder = j.optBoolean("companionViewfinder"),
                 fullSizeBinnedStills = j.optLong("fullSizeBinnedStills", 0L),
                 fullSizeBurstsToSingle = j.optLong("fullSizeBurstsToSingle", 0L),
                 dngOnly = j.optBoolean("dngOnly", false),

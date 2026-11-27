@@ -185,6 +185,9 @@ struct LensRoute {
     int32_t startupDelayMs = 0;
     // Pause the viewfinder for the still sequence, then restore it.
     bool stopViewfinderForPhotos = false;
+    // X14U 3x 50 MP layout: the repeating request targets only the companion (the camera-processed viewfinder),
+    // the photo stream is targeted by stills alone, and a still targets the photo stream only.
+    bool companionViewfinder = false;
     // Extra JPEG output configured with the session but never targeted.
     std::optional<std::pair<uint32_t, uint32_t>> auxJpegSize;
     std::optional<uint64_t> auxJpegBufferUsage;  // absent: the reader default
@@ -261,7 +264,7 @@ struct LensRoute {
 inline bool carriesRecipe(const LensRoute& route) {
     return !route.vendorKeys.empty() || route.photoStream || route.companionSize || route.auxJpegSize || route.frameRate > 0 ||
            route.stillTemplate || route.startupDelayMs > 0 || route.disableCompanion || route.companionPrivate ||
-           !route.companionTargeted || route.stopViewfinderForPhotos || route.rawBufferUsage || route.photoBufferUsage ||
+           !route.companionTargeted || route.stopViewfinderForPhotos || route.companionViewfinder || route.rawBufferUsage || route.photoBufferUsage ||
            !route.vendorGate.empty() || route.highResLive || route.workarounds.any() || route.gateHold ||
            route.sessionParams != SessionParamsPolicy::Cadence || route.requestDefaults != RequestDefaults::Rawr ||
            route.companionBufferUsage || route.companionBufferCount || route.companionPhysical || route.companionDetach ||

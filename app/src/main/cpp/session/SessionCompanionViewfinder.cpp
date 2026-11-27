@@ -86,6 +86,7 @@ void SessionEngine::releaseCompanionFramesLocked() {
         appendDiagnostic("COMPANION_VIEWFINDER_STOP frames=" + std::to_string(companion_.frames) +
                          " skipped=" + std::to_string(companion_.skipped));
     companion_.frames = companion_.skipped = 0;
+    companionViewfinderActive_.store(false, std::memory_order_relaxed);
 }
 
 void SessionEngine::releaseCompanionFrames() {
@@ -128,7 +129,8 @@ void SessionEngine::onCompanionFrame(AImage* image) {
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         vkBeginCommandBuffer(command, &begin);
         swapchainRenderer_.recordCompanion(command, index, buffer, realtime_.sensorOrientationDegrees(),
-                                           realtime_.displayRotationDegrees());
+                                           realtime_.displayRotationDegrees(),
+                                           realtime_.coordinator().viewfinderZoom());
         vkEndCommandBuffer(command);
         (void)vkResetFences(device, 1, &companion_.fences[slot]);
         const VkPipelineStageFlags waitStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -162,6 +164,7 @@ void SessionEngine::onCompanionFrame(AImage* image) {
     int64_t timestampNs = 0;
     if (lastCameraContext_ && AImage_getTimestamp(image, &timestampNs) == AMEDIA_OK && timestampNs > 0)
         swapchainRenderer_.noteLivePresentation(lastCameraContext_->cameraContextGeneration, timestampNs);
+    companionViewfinderActive_.store(true, std::memory_order_relaxed);
     if (++companion_.frames == 1)
         appendDiagnostic("COMPANION_VIEWFINDER_START size=" + std::to_string(width) + "x" + std::to_string(height) +
                          " sensorOrientation=" + std::to_string(realtime_.sensorOrientationDegrees()) +

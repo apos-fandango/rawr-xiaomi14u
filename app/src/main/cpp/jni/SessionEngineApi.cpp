@@ -263,6 +263,7 @@ std::string cameraControlSnapshot(EngineHandle h) {
                 ",\"livePreviewGeneration\":" + std::to_string(previewGeneration) +
                 ",\"livePreviewTimestamp\":" + std::to_string(previewTimestamp) +
                 ",\"fullSizeCapture\":" + (fullSize ? "true" : "false") +
+                ",\"companionViewfinder\":" + (engine(h)->companionViewfinderActive() ? "true" : "false") +
                 ",\"fullSizeCapturePending\":" + (acquiring ? "true" : "false") +
                 ",\"bracketHoldOpened\":" + std::to_string(hold.opened) +
                 ",\"bracketHoldDone\":" + std::to_string(hold.done) +

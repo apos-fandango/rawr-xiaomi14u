@@ -1257,13 +1257,21 @@ internal fun X14uCaptureLayout(
                         timedRun.running -> timedRun.locks
                         else -> emptyList()
                     }
-                    if (lines.isNotEmpty() || chips.isNotEmpty()) {
+                    // 3x 50 MP: the viewfinder is the camera's own processing; the look applies to the photo.
+                    val cameraPreview = state.companionViewfinder && !isVideo
+                    if (lines.isNotEmpty() || chips.isNotEmpty() || cameraPreview) {
                         Column(
                             (if (orientation == Orientation.Landscape) Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 64.dp)
                                 else Modifier.align(Alignment.TopStart).padding(8.dp))
                                 .uprightLayoutInLandscape(orientation),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
+                            if (cameraPreview) Text(
+                                "Camera preview", fontFamily = X14uFont, fontSize = dpText(11f),
+                                color = Color.White.copy(alpha = .85f),
+                                modifier = Modifier.background(Color.Black.copy(alpha = .45f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 8.dp, vertical = 3.dp)
+                            )
                             lines.forEach { line ->
                                 Text(
                                     line, fontFamily = CaptureMono, fontSize = dpText(10.5f), color = CaptureColors.Accent,

@@ -227,6 +227,8 @@ data class CaptureUiState(
     val fullSizePressSerial: Long = 0,
     val fullSizeExposurePending: Boolean = false,
     val restoringPreview: Boolean = false,
+    /** X14U 3x 50 MP: the viewfinder shows the camera's own processed preview (a small "Camera preview" note). */
+    val companionViewfinder: Boolean = false,
     /** Full-size captures the camera returned binned: stills saved at the binned size, bursts taken as a single. */
     val fullSizeBinnedStills: Long = 0L,
     val fullSizeBurstsToSingle: Long = 0L,

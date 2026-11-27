@@ -3,7 +3,7 @@
 // turned like present.frag (same quarterTurns convention). The camera's output is display-encoded; the swapchain is
 // UNORM, so it is written as is.
 layout(set=0,binding=0) uniform sampler2D srcImage;
-layout(push_constant) uniform PC { uint quarterTurns; float srcAspect; float dstAspect; } pc;
+layout(push_constant) uniform PC { uint quarterTurns; float srcAspect; float dstAspect; float zoom; } pc;
 layout(location=0) in vec2 uv;
 layout(location=0) out vec4 outColor;
 
@@ -25,5 +25,7 @@ void main(){
         q.y=(uv.y-0.5)/h+0.5;
         if(q.y<0.0||q.y>1.0){outColor=vec4(0,0,0,1);return;}
     }
+    // Viewfinder zoom: a centred crop (the photo is unaffected, like the RAW viewfinder's zoom).
+    q=(q-0.5)/max(pc.zoom,1.0)+0.5;
     outColor=vec4(texture(srcImage,sourceUv(q)).rgb,1.0);
 }
