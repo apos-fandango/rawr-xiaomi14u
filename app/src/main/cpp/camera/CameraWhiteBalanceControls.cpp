@@ -66,7 +66,21 @@ void observeWhiteBalanceResult(CameraControlState& state, const metadata::FrameM
     // copy per frame only; inversion runs once on manual entry, never
     // here. Skip while in manual so our own echoed gains don't overwrite
     // the auto seed. frame.awbMode==0 means AWB OFF (manual).
-    if (!inManualWb && frame.awbMode != 0) {
+    // X14U 3x 50 MP: the camera's AWB doesn't run, every frame carries the 12 MP view's gains (AWB off). Those
+    // stand in for auto: without them a manual white balance entered there had no baseline and used the generic
+    // Kelvin gains (strong green, Nov 27 171839). Only frames that echo the carried gains count, never a manual echo.
+    const bool carriedEcho = [&] {
+        if (inManualWb || frame.awbMode != 0 || !shotHandover().companionCarry()) return false;
+        const auto carried = shotHandover().carried();
+        if (!carried) return false;
+        for (size_t i = 0; i < 4; ++i) {
+            const float want = carried->gains[i];
+            const float got = frame.colorCorrectionGainsRggb[i];
+            if (!(want > 0.0f) || !std::isfinite(got) || std::fabs(got - want) > 0.02f * want) return false;
+        }
+        return true;
+    }();
+    if (!inManualWb && (frame.awbMode != 0 || carriedEcho)) {
         const auto& g = frame.colorCorrectionGainsRggb;
         if (g[0] > 0.0f && g[1] > 0.0f && g[2] > 0.0f && g[3] > 0.0f && std::isfinite(g[0]) &&
             std::isfinite(g[1]) && std::isfinite(g[2]) && std::isfinite(g[3])) {

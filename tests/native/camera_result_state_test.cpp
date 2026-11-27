@@ -4,6 +4,7 @@
 #include <limits>
 
 #include "camera/CameraResultState.h"
+#include "camera/ShotHandover.h"
 #include "camera/StillFocus.h"
 
 using namespace rawrcam::camera;
@@ -131,6 +132,27 @@ void frameRateObservation() {
     assert(!state.measuredViewfinderFps && !state.appliedRawFps);
     results.observe(state, frame(1040000000), {}, nullptr, 0, false);
     assert(state.measuredViewfinderFps == 25);
+}
+
+void companionCarryStandsInForAuto() {
+    // 3x 50 MP: frames echo the carried 12 MP gains with AWB off; they seed the manual entry baseline, a different
+    // (manual) echo doesn't.
+    auto& handover = rawrcam::camera::shotHandover();
+    const std::array<float, 9> identity{1, 0, 0, 0, 1, 0, 0, 0, 1};
+    handover.noteApplied({1.2f, 1, 1, 2.7f}, identity);
+    handover.setCompanionCarry(true);
+    CameraResultState results;
+    auto state = controls();
+    state.hasLastHalAwbGains = false;
+    auto observedFrame = frame();
+    observedFrame.awbMode = 0;
+    observedFrame.colorCorrectionGainsRggb = {1.5f, 1, 1, 1.5f};
+    results.observe(state, observedFrame, {}, nullptr, 0, false);
+    assert(!state.hasLastHalAwbGains);
+    observedFrame.colorCorrectionGainsRggb = {1.2f, 1, 1, 2.7f};
+    results.observe(state, observedFrame, {}, nullptr, 0, false);
+    assert(state.hasLastHalAwbGains && state.lastHalAwbGains[3] == 2.7f);
+    handover.setCompanionCarry(false);
 }
 
 void manualWithoutSeedLearnsOnce() {
@@ -423,6 +445,7 @@ int main() {
     frameRateObservation();
     whiteBalanceFreezing();
     manualWithoutSeedLearnsOnce();
+    companionCarryStandsInForAuto();
     sensitivityCoordinate();
     sensitivityEndpoints();
     priorityContract();
