@@ -223,6 +223,12 @@ fun LensProfile.runAsTarget(): String? {
         .firstOrNull()
 }
 
+/** X14U 3x 50 MP: the chosen option runs this lens as one whose viewfinder is the camera-processed companion. */
+fun LensProfile.runsAsCompanion(lenses: List<LensProfile>): Boolean {
+    val target = runAsTarget() ?: return false
+    return lenses.firstOrNull { it.name.trim().equals(target, ignoreCase = true) }?.session?.companionViewfinder == true
+}
+
 /** True when the lens holds overrides for this lens row's pill dot (its own or its run-as lens's). */
 fun LensProfile.hasOverrides(): Boolean = overrides.isNotEmpty()
 

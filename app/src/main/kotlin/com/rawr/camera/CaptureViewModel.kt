@@ -12,6 +12,7 @@ import com.rawr.camera.settings.model.effectiveLensProfiles
 import com.rawr.camera.settings.model.selectOption
 import com.rawr.camera.settings.model.withRunAsRowsOff
 import com.rawr.camera.settings.model.runAsTarget
+import com.rawr.camera.settings.model.runsAsCompanion
 import com.rawr.camera.integration.NativeCaptureScreenController
 import com.rawr.camera.integration.RawPreviewCoordinator
 import com.rawr.camera.integration.StillCaptureCoordinator
@@ -243,10 +244,26 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         panoFlow,
         burstFlow
     ) { lenses, (lensId, video, _), pano, burst ->
-        // Burst runs 12 MP frames (no 50 MP shot there).
-        !video && !pano && !burst && lenses.firstOrNull { it.name.trim().equals(lensId.trim(), ignoreCase = true) }
-            ?.runAsTarget() != null
+        // Burst runs 12 MP frames (no 50 MP shot there). A camera-processed-viewfinder run-as lens isn't a per-shot
+        // switch: it runs all the time while chosen (companionRunAs).
+        val lens = lenses.firstOrNull { it.name.trim().equals(lensId.trim(), ignoreCase = true) }
+        !video && !pano && !burst && lens?.runAsTarget() != null && !lens.runsAsCompanion(lenses)
     }.distinctUntilChanged().stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, false) }
+
+    /**
+     * X14U 3x 50 MP (stage 3): a lens whose chosen option runs as a lens with the camera-processed viewfinder
+     * (session.companionViewfinder) runs as it for as long as it's chosen, in Photo / Pro: that lens has its own live
+     * viewfinder with AF, and the shutter is a normal shot. Pano, Burst and Video run the lens as itself.
+     */
+    private val companionRunAs: kotlinx.coroutines.flow.Flow<Boolean> by lazy { kotlinx.coroutines.flow.combine(
+        settingsEditor.values.map { it.effectiveLensProfiles(DeviceLensDefaults.lenses) },
+        controller.state.map { it.selectedLensId to (it.captureMode == com.rawr.camera.model.CaptureMode.Video) },
+        panoFlow,
+        burstFlow
+    ) { lenses, (lensId, video), pano, burst ->
+        !video && !pano && !burst &&
+            lenses.firstOrNull { it.name.trim().equals(lensId.trim(), ignoreCase = true) }?.runsAsCompanion(lenses) == true
+    }.distinctUntilChanged() }
 
     private var fullSizeJob: kotlinx.coroutines.Job? = null
 
@@ -264,6 +281,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         val lens = latestSettings.effectiveLensProfiles(DeviceLensDefaults.lenses)
             .firstOrNull { it.name.trim().equals(state.selectedLensId.trim(), ignoreCase = true) } ?: return false
         if (lens.runAsTarget() == null) return false
+        // Already running as its camera-processed-viewfinder lens: a normal shot.
+        if (lens.runsAsCompanion(latestSettings.effectiveLensProfiles(DeviceLensDefaults.lenses))) return false
         shootFullSize()
         return true
     }
@@ -887,6 +906,10 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         com.rawr.camera.settings.model.AccentSettings.init(application)
         viewModelScope.launch {
             com.rawr.camera.settings.model.FaceSettings.values.collect { previewCoordinator.setFaceOptions(it.focus, it.exposure) }
+        }
+        viewModelScope.launch {
+            // A per-shot 50 MP job owns the switch while it runs (it puts it back itself).
+            companionRunAs.collect { on -> if (fullSizeJob?.isActive != true) previewCoordinator.setRunAsForShot(on) }
         }
         refreshLatestGalleryImage()
         viewModelScope.launch { recordingBackend.recoverInterrupted() }
