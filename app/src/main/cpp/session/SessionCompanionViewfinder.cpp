@@ -157,6 +157,11 @@ void SessionEngine::onCompanionFrame(AImage* image) {
     }
     companion_.held[slot] = image;
     companion_.next = slot ^ 1u;
+    // A drawn companion frame is the live preview: after a 50 MP still the UI waits for one newer than the still
+    // ("Restoring preview…"), which in this layout never comes from the RAW pipeline.
+    int64_t timestampNs = 0;
+    if (lastCameraContext_ && AImage_getTimestamp(image, &timestampNs) == AMEDIA_OK && timestampNs > 0)
+        swapchainRenderer_.noteLivePresentation(lastCameraContext_->cameraContextGeneration, timestampNs);
     if (++companion_.frames == 1)
         appendDiagnostic("COMPANION_VIEWFINDER_START size=" + std::to_string(width) + "x" + std::to_string(height) +
                          " sensorOrientation=" + std::to_string(realtime_.sensorOrientationDegrees()) +
