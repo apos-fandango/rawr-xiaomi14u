@@ -891,6 +891,11 @@ struct NativeCameraController::Impl final : CameraEventSink {
             control.hasManualWhiteBalanceEntryGains = previousControl.hasManualWhiteBalanceEntryGains;
             control.manualWhiteBalanceEntryTempK = previousControl.manualWhiteBalanceEntryTempK;
             control.manualWhiteBalanceEntryTint = previousControl.manualWhiteBalanceEntryTint;
+            // The colour transform manual gains are sent with is learnt only from auto frames, so a restart in
+            // manual never learns it again: without it every request fell back to auto white balance while the
+            // UI still showed the manual value (1x after a 50 MP shot, Nov 27).
+            control.manualWhiteBalanceTransformSeed = previousControl.manualWhiteBalanceTransformSeed;
+            control.hasManualWhiteBalanceTransformSeed = previousControl.hasManualWhiteBalanceTransformSeed;
             control.focusMode = previousControl.focusMode;
             control.requestedManualFocusNormalized = previousControl.requestedManualFocusNormalized;
             diag("CAMERA_CONTROL_INTENT_RESTORED cameraId=" + route.cameraId +

@@ -133,6 +133,22 @@ void frameRateObservation() {
     assert(state.measuredViewfinderFps == 25);
 }
 
+void manualWithoutSeedLearnsOnce() {
+    // A session that opens in manual (new camera after a 50 MP shot) has no seed; its first HAL frame seeds it and
+    // later (echoed) frames don't move it.
+    CameraResultState results;
+    auto state = controls();
+    state.whiteBalanceMode = WhiteBalanceControlMode::ManualTempTint;
+    state.hasManualWhiteBalanceTransformSeed = false;
+    auto observedFrame = frame();
+    observedFrame.colorCorrectionTransform.rowMajor.fill(0.5f);
+    results.observe(state, observedFrame, {}, nullptr, 0, false);
+    assert(state.hasManualWhiteBalanceTransformSeed && state.manualWhiteBalanceTransformSeed[0] == 0.5f);
+    observedFrame.colorCorrectionTransform.rowMajor.fill(2);
+    results.observe(state, observedFrame, {}, nullptr, 0, false);
+    assert(state.manualWhiteBalanceTransformSeed[0] == 0.5f);
+}
+
 void whiteBalanceFreezing() {
     CameraResultState results;
     auto state = controls();
@@ -406,6 +422,7 @@ int main() {
     repeatingTelemetryAndOneShotIsolation();
     frameRateObservation();
     whiteBalanceFreezing();
+    manualWithoutSeedLearnsOnce();
     sensitivityCoordinate();
     sensitivityEndpoints();
     priorityContract();

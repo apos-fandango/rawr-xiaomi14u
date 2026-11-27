@@ -56,7 +56,9 @@ void observeWhiteBalanceResult(CameraControlState& state, const metadata::FrameM
             std::isfinite(g[0]) && std::isfinite(g[1]) && std::isfinite(g[2]) && std::isfinite(g[3]))
             shotHandover().noteApplied(g, frame.colorCorrectionTransform.rowMajor);
     }
-    if (!inManualWb && frame.colorCorrectionTransform.valid) {
+    // A session that starts in manual has no seed (a new camera, e.g. back from a 50 MP shot): its requests fall
+    // back to auto until one arrives, so these frames are the HAL's own and may seed it once.
+    if ((!inManualWb || !state.hasManualWhiteBalanceTransformSeed) && frame.colorCorrectionTransform.valid) {
         state.manualWhiteBalanceTransformSeed = frame.colorCorrectionTransform.rowMajor;
         state.hasManualWhiteBalanceTransformSeed = true;
     }
