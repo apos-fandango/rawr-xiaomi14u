@@ -1058,6 +1058,34 @@ bool CameraDeviceSession::captureFullSize(CameraRequestPipeline& pipeline, const
             if (request->setI32(ACAMERA_CONTROL_AF_REGIONS, 5, region.data.i32) != ACAMERA_OK)
                 return false;
         }
+        // A white balance the viewfinder fixed (Manual WB, or the 12 MP view's gains carried into 3x 50 MP) goes
+        // on the still too: the fresh template runs the camera's AWB, which in the 3x 50 MP session never moves
+        // from its start gains (yellow indoors, Nov 27). Auto white balance leaves the template as it was.
+        RequestEntry awb{};
+        if (request_->get(ACAMERA_CONTROL_AWB_MODE, &awb) == ACAMERA_OK && awb.count == 1 && awb.data.u8 &&
+            awb.data.u8[0] == ACAMERA_CONTROL_AWB_MODE_OFF) {
+            RequestEntry color{}, gains{}, transform{};
+            const bool have = request_->get(ACAMERA_COLOR_CORRECTION_GAINS, &gains) == ACAMERA_OK &&
+                              gains.count == 4 && gains.data.f &&
+                              request_->get(ACAMERA_COLOR_CORRECTION_TRANSFORM, &transform) == ACAMERA_OK &&
+                              transform.count == 9 && transform.data.r;
+            bool copied = have;
+            if (have) {
+                const uint8_t colorMode =
+                    request_->get(ACAMERA_COLOR_CORRECTION_MODE, &color) == ACAMERA_OK && color.count == 1 &&
+                            color.data.u8
+                        ? color.data.u8[0]
+                        : uint8_t(ACAMERA_COLOR_CORRECTION_MODE_TRANSFORM_MATRIX);
+                copied = ok(request->setU8(ACAMERA_CONTROL_AWB_MODE, 1, awb.data.u8)) &&
+                         ok(request->setU8(ACAMERA_COLOR_CORRECTION_MODE, 1, &colorMode)) &&
+                         ok(request->setFloat(ACAMERA_COLOR_CORRECTION_GAINS, 4, gains.data.f)) &&
+                         ok(request->setRational(ACAMERA_COLOR_CORRECTION_TRANSFORM, 9, transform.data.r));
+            }
+            if (!keysLogged)
+                diag(std::string("CAMERA_STILL_WB_COPY ") + (copied ? "ok" : "failed") +
+                     (have ? " gains=" + std::to_string(gains.data.f[0]) + "," + std::to_string(gains.data.f[3])
+                           : std::string(" missing")));
+        }
         // Only the user's MF mode owns a lens-distance request. An AF result's
         // distance is telemetry, not a reason to switch to manual on shutter.
         if (afMode == ACAMERA_CONTROL_AF_MODE_OFF && control.capabilities.manualFocusSupported) {
