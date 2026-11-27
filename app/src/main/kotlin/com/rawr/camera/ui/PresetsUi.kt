@@ -39,6 +39,8 @@ interface PresetActions {
     /** The live settings (and [camera]) into the preset, keeping its groups. */
     fun update(id: String, camera: PresetCamera) {}
     fun rename(id: String, name: String) {}
+    /** Leaves [group] out of the preset from now on (its values go; a preset keeps at least one group). */
+    fun removeGroup(id: String, group: PresetGroup) {}
     fun duplicate(id: String) {}
     fun delete(id: String) {}
     /** Strip positions (P0 stays first). */

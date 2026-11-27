@@ -595,6 +595,15 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
             null
         }
 
+        override fun removeGroup(id: String, group: com.rawr.camera.settings.model.PresetGroup) = editPresets { _, list ->
+            val i = list.indexOfFirst { it.id == id }
+            if (i >= 0 && !list[i].isBaseline && group in list[i].groups && list[i].groups.size > 1) {
+                val groups = list[i].groups - group
+                list[i] = list[i].copy(groups = groups, camera = list[i].camera.only(groups))
+            }
+            null
+        }
+
         override fun duplicate(id: String) = editPresets { _, list ->
             val i = list.indexOfFirst { it.id == id }
             if (i < 0 || list.size >= com.rawr.camera.settings.model.CapturePreset.MAX_PRESETS) return@editPresets null

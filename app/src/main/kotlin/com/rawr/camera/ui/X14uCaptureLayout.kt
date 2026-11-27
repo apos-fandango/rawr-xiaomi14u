@@ -1509,6 +1509,7 @@ internal fun X14uCaptureLayout(
                             presetSheet = null
                         },
                         onRename = { presetActions.rename(item.id, it) },
+                        onRemoveGroup = { presetActions.removeGroup(item.id, it) },
                         onDuplicate = { presetActions.duplicate(item.id) },
                         onDelete = {
                             presetActions.delete(item.id)

@@ -392,7 +392,9 @@ internal fun X14uPresetSaveSheet(
 ) {
     var name by remember { mutableStateOf("") }
     var groups by remember {
-        mutableStateOf(setOf(PresetGroup.Exposure, PresetGroup.Lens, PresetGroup.Look, PresetGroup.Film))
+        // Lens is left out by default: a preset with a lens switches to it (Nov 27: P presets saved on 1x pulled the 3x
+    // back to 1x). Tick it for a preset that should pick a lens.
+    mutableStateOf(setOf(PresetGroup.Exposure, PresetGroup.Look, PresetGroup.Film))
     }
     val all = PresetGroup.entries
     val save = { if (groups.isNotEmpty()) onSave(name, groups) }
@@ -432,6 +434,8 @@ internal fun X14uPresetDetailsSheet(
     full: Boolean,
     onUpdate: () -> Unit,
     onRename: (String) -> Unit,
+    /** Tap an included tile: leave that group out (asked first); not P0, never the last group. */
+    onRemoveGroup: (PresetGroup) -> Unit,
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onRestoreDefaults: () -> Unit,
@@ -442,6 +446,7 @@ internal fun X14uPresetDetailsSheet(
     var name by remember(item.id) { mutableStateOf(item.name) }
     var confirm by remember(item.id) { mutableStateOf(false) }
     var confirmReplace by remember(item.id) { mutableStateOf(false) }
+    var dropGroup by remember(item.id) { mutableStateOf<PresetGroup?>(null) }
     val all = PresetGroup.entries
     X14uSheet(item.name, onClose, modifier.testTag("x14u_preset_details"), lead = item.label) {
         if (renaming) {
@@ -454,7 +459,9 @@ internal fun X14uPresetDetailsSheet(
             isOn = { false },
             title = { all[it].label },
             subtitle = { if (all[it] in item.groups) presetGroupText(all[it], item.camera, item.summary) else "not included" },
-            onTap = null,
+            onTap = if (item.isBaseline || item.groups.size < 2) null else { i ->
+                if (all[i] in item.groups) dropGroup = all[i]
+            },
             dim = { all[it] !in item.groups }
         )
         X14uSheetDivider()
@@ -463,6 +470,14 @@ internal fun X14uPresetDetailsSheet(
                 if (it == 1) onRename(name) else name = item.name
                 renaming = false
             })
+            dropGroup != null -> {
+                val group = dropGroup!!
+                X14uSheetLabel("Leave ${group.label} out of ${item.label} ${item.name}?")
+                X14uSegments(listOf("Cancel", "Leave out"), selected = null, emphasis = 1, onSelect = {
+                    if (it == 1) onRemoveGroup(group)
+                    dropGroup = null
+                })
+            }
             confirmReplace -> {
                 X14uSheetLabel("Replace ${item.label} ${item.name} with the current settings?")
                 X14uSegments(listOf("Cancel", "Replace"), selected = null, emphasis = 1, onSelect = {
