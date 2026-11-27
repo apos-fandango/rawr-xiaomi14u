@@ -243,7 +243,9 @@ CameraControlApplyResult applyCameraControlState(CameraRequest* request, const C
     // X14U 50 MP shot: the shot's session uses the 12 MP view's white balance (gains and transform as applied there)
     // instead of starting its own auto white balance cold.
     const auto carried = shotHandover().carried();
-    if (carried && state.capabilities.manualGainsSupported) {
+    // In the 3x 50 MP companion session the carry stands in for auto white balance only.
+    if (carried && state.capabilities.manualGainsSupported &&
+        !(result.wbManualRequested && shotHandover().companionCarry())) {
         const uint8_t awb = ACAMERA_CONTROL_AWB_MODE_OFF;
         const uint8_t color = ACAMERA_COLOR_CORRECTION_MODE_TRANSFORM_MATRIX;
         result.wbStatus = request->setU8(ACAMERA_CONTROL_AWB_MODE, 1, &awb);

@@ -34,6 +34,7 @@ public:
     // Every frame: the white balance the camera applied (any mode).
     void noteApplied(const std::array<float, 4>& gains, const std::array<float, 9>& transform) {
         std::lock_guard<std::mutex> lock(mutex_);
+        if (companionCarry_) return;  // the 3x 50 MP session's stuck gains never replace the 12 MP view's
         last_ = AppliedWhiteBalance{gains, transform};
     }
     // Every viewfinder frame: the exposure and lens position the camera reported.
@@ -53,6 +54,20 @@ public:
         carried_ = on ? last_ : std::nullopt;
         carriedExposure_ = on ? lastExposure_ : std::nullopt;
         carrying_.store(on, std::memory_order_relaxed);
+    }
+    // X14U 3x 50 MP (camera-processed viewfinder): the camera doesn't run auto white balance in that mode (its
+    // gains stay where the session started: diagnostics Nov 27 15:48, the DNG's AsShotNeutral = the start gains, a
+    // yellow cast under warm light). While such a session runs, requests carry the last 12 MP view's white balance
+    // (auto only: a manual white balance still wins). Set at every session start.
+    void setCompanionCarry(bool on) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (on && !companionCarry_ && !carrying_.load(std::memory_order_relaxed)) carried_ = last_;
+        if (!on && companionCarry_ && !carrying_.load(std::memory_order_relaxed)) carried_ = std::nullopt;
+        companionCarry_ = on;
+    }
+    bool companionCarry() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return companionCarry_;
     }
     // Gain the shot's camera needs at the carried exposure. Xiaomi 14 Ultra only: the 0.5x (camera 3) full-size
     // readout gives 0.70x the binned mode's raw signal at the same shutter and ISO (diagnostics 14 Nov: 47.5/68.2,
@@ -108,6 +123,7 @@ private:
     std::optional<AppliedWhiteBalance> carried_;
     std::optional<AppliedExposure> lastExposure_;
     std::optional<AppliedExposure> carriedExposure_;
+    bool companionCarry_ = false;
     std::atomic<bool> hold_{false};
     std::atomic<bool> carrying_{false};
     std::atomic<uint64_t> lastGeneration_{0};

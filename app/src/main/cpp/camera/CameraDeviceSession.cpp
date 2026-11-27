@@ -1,4 +1,5 @@
 #include "camera/CameraDeviceSession.h"
+#include "camera/ShotHandover.h"
 #include "camera/VendorCameraGate.h"
 
 #include <camera/NdkCameraMetadataTags.h>
@@ -619,6 +620,8 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
         probe50_ = captureWindow_ && (profile || (set && (value[0] == '1' || value[0] == '2')));
         probe50RawOnlyStill_ = probe50_ && (profile || value[0] == '2');
     }
+    shotHandover().setCompanionCarry(probe50_);
+    if (probe50_) diag(std::string("COMPANION_WB_CARRY carried=") + (shotHandover().carried() ? "yes" : "none"));
     if (!probe50_) outputs.push_back({rawWindow_, physicalCameraId, recipe.rawStreamUseCase});
     const uint32_t rawWidth = selected ? selected->stream.width : 0, rawHeight = selected ? selected->stream.height : 0;
     profileCompanionTargeted_ = !selected || selected->companionTargeted;
