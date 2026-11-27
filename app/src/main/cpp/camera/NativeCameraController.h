@@ -1,4 +1,5 @@
 #pragma once
+#include <media/NdkImage.h>
 
 #include <android/native_window.h>
 
@@ -29,6 +30,10 @@ struct PreviewCallbacks {
     std::function<void(uint64_t)> captureFailed;
     std::function<void(uint64_t, uint64_t)> acquisitionFailed;  // tag 0 = device failure
     std::function<bool(const metadata::FrameMetadataSnapshot&)> submitMetadata;
+    // 3x 50 MP probe viewfinder (CameraDeviceSession::setCompanionSink): a companion frame to draw (ownership
+    // passes), and "the companion reader is going: let go of its frames".
+    std::function<void(AImage*)> companionFrame;
+    std::function<void()> companionReleased;
     std::function<void(const std::string&)> diagnostic;
 };
 

@@ -481,6 +481,8 @@ void SwapchainRenderer::rebuildDescriptors() {
 
 void SwapchainRenderer::destroySwapchain() {
     if (device_ == VK_NULL_HANDLE) return;
+    releaseCompanionImages();
+    destroyCompanionPipeline();
     for (VkFramebuffer framebuffer : framebuffers_)
         if (framebuffer != VK_NULL_HANDLE) vkDestroyFramebuffer(device_, framebuffer, nullptr);
     framebuffers_.clear();

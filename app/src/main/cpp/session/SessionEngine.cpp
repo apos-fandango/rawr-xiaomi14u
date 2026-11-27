@@ -192,6 +192,8 @@ SessionEngine::SessionEngine(std::string filesDir) : filesDir_(std::move(filesDi
         return submitMetadata(metadata);
     };
     callbacks.diagnostic = [this](const std::string& line) { recordDiagnosticLine(line); };
+    callbacks.companionFrame = [this](AImage* image) { onCompanionFrame(image); };
+    callbacks.companionReleased = [this] { releaseCompanionFrames(); };
     auto controller = std::make_unique<rawrcam::camera::NativeCameraController>(std::move(callbacks));
     controller->setSensitivityCalibrationStore(filesDir_ + "/rawrcam_iso_calibration.txt");
     cameraControls_.attach(std::move(controller));
@@ -476,6 +478,8 @@ void SessionEngine::shutdown() {
         captureFrameIngress_.destroy();
         captureReaderGeneration_ = 0;
         destroyRawInputInternal();
+        releaseCompanionFramesLocked();
+        destroyCompanionPresentLocked();
         realtime_.shutdown();
         swapchainRenderer_.destroySwapchain();
         presentationSurface_.reset();

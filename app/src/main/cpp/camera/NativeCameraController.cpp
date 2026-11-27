@@ -2071,7 +2071,9 @@ struct NativeCameraController::Impl final : CameraEventSink {
 };
 
 NativeCameraController::NativeCameraController(PreviewCallbacks callbacks)
-    : impl_(std::make_unique<Impl>(std::move(callbacks))) {}
+    : impl_(std::make_unique<Impl>(std::move(callbacks))) {
+    impl_->deviceSession.setCompanionSink(impl_->callbacks.companionFrame, impl_->callbacks.companionReleased);
+}
 NativeCameraController::~NativeCameraController() = default;
 void NativeCameraController::setActive(bool active) { impl_->setActive(active); }
 bool NativeCameraController::setLensId(const std::string& lensId) { return impl_->setLens(lensId); }

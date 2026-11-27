@@ -100,6 +100,11 @@ void CameraDeviceSession::releaseRequestOutputs(bool orphan) noexcept {
         (void)closedSession_.release();
         captureWindow_ = nullptr;
         captureConfigured_ = false;
+        {
+            // The orphaned reader keeps streaming into nothing; the frame the sink holds stays valid with it.
+            std::lock_guard<std::mutex> lock(companionSinkMutex_);
+            companionViewfinderReader_ = nullptr;
+        }
         companionReader_ = nullptr;
         companionWindow_ = nullptr;
         companionTargeted_ = false;
@@ -116,6 +121,7 @@ void CameraDeviceSession::releaseRequestOutputs(bool orphan) noexcept {
     stillKeys_.clear();
     companionWindow_ = nullptr;
     companionTargeted_ = false;
+    retireCompanionViewfinder();
     if (companionReader_) AImageReader_delete(companionReader_);
     companionReader_ = nullptr;
     companionFromProfile_ = false;
@@ -396,6 +402,13 @@ bool CameraDeviceSession::open(const LensRoute& route, CameraCallbacks& callback
         backoff = std::min(backoff * 2, kOpenRetryMax);
     }
 }
+void CameraDeviceSession::retireCompanionViewfinder() noexcept {
+    std::lock_guard<std::mutex> lock(companionSinkMutex_);
+    if (!companionViewfinderReader_) return;
+    companionViewfinderReader_ = nullptr;
+    // The sink deletes the AImage it holds before its reader goes.
+    if (companionReleased_) companionReleased_();
+}
 bool CameraDeviceSession::addCompanionStream(const std::string& physicalCameraId,
                                              uint32_t rawWidth, uint32_t rawHeight,
                                              const CompanionRecipe& companion, int64_t streamUseCase,
@@ -424,7 +437,8 @@ bool CameraDeviceSession::addCompanionStream(const std::string& physicalCameraId
         return false;
     };
     if (width <= 0 || height <= 0) return fail("size", 0);
-    const int32_t maxImages = int32_t(companion.maxImages);
+    // The probe viewfinder holds up to two frames while the GPU draws them; the reader needs room to keep streaming.
+    const int32_t maxImages = probe50_ ? std::max<int32_t>(int32_t(companion.maxImages), 5) : int32_t(companion.maxImages);
     // The defaults reproduce the old readers: PRIVATE samples on the GPU, YUV keeps the reader's own usage.
     const media_status_t ms =
         companion.usage ? AImageReader_newWithUsage(width, height, privateFormat ? AIMAGE_FORMAT_PRIVATE : AIMAGE_FORMAT_YUV_420_888,
@@ -433,9 +447,18 @@ bool CameraDeviceSession::addCompanionStream(const std::string& physicalCameraId
                                                     AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE, maxImages, &companionReader_)
                         : AImageReader_new(width, height, AIMAGE_FORMAT_YUV_420_888, maxImages, &companionReader_);
     if (ms != AMEDIA_OK || !companionReader_) return fail("reader", ms);
-    // Frames exist only to keep the HAL streaming; drop each one on arrival.
+    // Frames exist only to keep the HAL streaming and are dropped on arrival, except in the 3x 50 MP probe layout,
+    // where they are the viewfinder: the newest one goes to the sink.
     AImageReader_ImageListener listener{};
-    listener.onImageAvailable = [](void*, AImageReader* reader) {
+    listener.context = &companionListener_;
+    listener.onImageAvailable = [](void* context, AImageReader* reader) {
+        auto* self = static_cast<CompanionListener*>(context)->owner;
+        std::lock_guard<std::mutex> lock(self->companionSinkMutex_);
+        if (self->companionSink_ && reader == self->companionViewfinderReader_) {
+            AImage* latest = nullptr;
+            if (AImageReader_acquireLatestImage(reader, &latest) == AMEDIA_OK && latest) self->companionSink_(latest);
+            return;
+        }
         AImage* image = nullptr;
         while (AImageReader_acquireNextImage(reader, &image) == AMEDIA_OK && image) {
             AImage_delete(image);
@@ -449,6 +472,10 @@ bool CameraDeviceSession::addCompanionStream(const std::string& physicalCameraId
         return fail("window", ws);
     outputs.push_back({window, physicalCameraId, streamUseCase});
     companionWindow_ = window;
+    if (probe50_) {
+        std::lock_guard<std::mutex> lock(companionSinkMutex_);
+        companionViewfinderReader_ = companionReader_;
+    }
     companionFromProfile_ = profileSize.has_value();
     companionDetachable_ = companion.detach;
     std::string tuning = ":images=" + std::to_string(maxImages) + ":detach=" + (companion.detach ? "1" : "0");
@@ -607,6 +634,7 @@ bool CameraDeviceSession::createSession(ANativeWindow* window, const std::option
         if (companionSize) return fail("companion", "reason=profile_companion_unavailable");
         // RAW-only still works on most devices; never block the start on it.
         companionWindow_ = nullptr;
+        retireCompanionViewfinder();
         if (companionReader_) AImageReader_delete(companionReader_);
         companionReader_ = nullptr;
         companionFacts_.reset();

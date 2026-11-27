@@ -1,5 +1,6 @@
 #pragma once
 
+#include <android/hardware_buffer.h>
 #include <android/native_window.h>
 #include <vulkan/vulkan.h>
 
@@ -77,6 +78,16 @@ class SwapchainRenderer final {
         return livePresentation_;
     }
     void resetLogging() noexcept { recorder_.resetLogging(); }
+
+    // X14U 3x 50 MP (stage 2): the viewfinder of a session whose repeating request targets only the camera-processed
+    // PRIVATE companion (GPU-sampled usage). prepareCompanion imports the buffer (cached per buffer; the camera
+    // cycles a few) and builds the YCbCr sampler/pipeline for its format; false = not drawable, skip the frame.
+    // recordCompanion then draws it into an acquired swapchain image, aspect-fit and turned like the RAW viewfinder.
+    bool prepareCompanion(AHardwareBuffer* buffer, uint32_t width, uint32_t height);
+    void recordCompanion(VkCommandBuffer command, uint32_t imageIndex, AHardwareBuffer* buffer,
+                         int sensorOrientationDegrees, int displayRotationDegrees);
+    // Drops every imported companion buffer. The caller has waited for the GPU work that sampled them.
+    void releaseCompanionImages() noexcept;
     // Lens calibration the last live-viewfinder frame was undistorted with
     // (nullopt = none), so display taps and face boxes map through it.
     [[nodiscard]] std::optional<rawrcam::geometry::LensDistortionModel> presentedLensWarp() const {
@@ -114,6 +125,29 @@ class SwapchainRenderer final {
     mutable std::mutex lensWarpMutex_;
     std::optional<rawrcam::geometry::LensDistortionModel> presentedLensWarp_;
     uint32_t presentedLensMirror_ = 0;
+
+    struct CompanionImage {
+        AHardwareBuffer* buffer = nullptr;
+        uint32_t width = 0, height = 0;
+        VkImage image = VK_NULL_HANDLE;
+        VkDeviceMemory memory = VK_NULL_HANDLE;
+        VkImageView view = VK_NULL_HANDLE;
+        VkDescriptorSet set = VK_NULL_HANDLE;
+        bool initialized = false;
+    };
+    CompanionImage* findCompanion(AHardwareBuffer* buffer) noexcept;
+    bool ensureCompanionPipeline(uint64_t externalFormat, const VkAndroidHardwareBufferFormatPropertiesANDROID& format);
+    void destroyCompanionPipeline() noexcept;
+    std::vector<CompanionImage> companionImages_;
+    uint64_t companionFormat_ = 0;
+    VkRenderPass companionRenderPass_ = VK_NULL_HANDLE;
+    VkSamplerYcbcrConversion companionConversion_ = VK_NULL_HANDLE;
+    VkSampler companionSampler_ = VK_NULL_HANDLE;
+    VkDescriptorSetLayout companionSetLayout_ = VK_NULL_HANDLE;
+    VkPipelineLayout companionLayout_ = VK_NULL_HANDLE;
+    VkPipeline companionPipeline_ = VK_NULL_HANDLE;
+    VkDescriptorPool companionPool_ = VK_NULL_HANDLE;
+    bool companionLogged_ = false;
 
     void createPipeline();
     void createFramebuffers();

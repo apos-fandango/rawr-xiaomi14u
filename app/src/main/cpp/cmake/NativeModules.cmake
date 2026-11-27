@@ -172,6 +172,7 @@ rawrcam_module(presentation
     presentation/PresentationSurface.cpp
     presentation/PresentRecorder.cpp
     presentation/SwapchainRenderer.cpp
+    presentation/CompanionViewfinder.cpp
 )
 
 rawrcam_module(video
@@ -258,4 +259,5 @@ rawrcam_module(session
     session/SessionFrameCallbacks.cpp
     session/SessionDiagnostics.cpp
     session/SessionSurfaces.cpp
+    session/SessionCompanionViewfinder.cpp
 )

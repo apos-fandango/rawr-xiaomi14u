@@ -62,6 +62,14 @@ class CameraDeviceSession final {
     // the repeating request targets the companion only and the photo stream is the single RAW stream (PhotonVidCam's
     // 3x 50 MP layout). No viewfinder picture: the probe only checks AF and the full-size still.
     bool probe50() const noexcept { return probe50_; }
+    // Stage 2 viewfinder: in the probe layout the companion's frames go to `frame` (it takes ownership of the
+    // AImage and deletes it once drawn) instead of being dropped. `released` is called before the companion reader
+    // is deleted, so the sink can wait for its GPU work and delete the AImage it still holds.
+    void setCompanionSink(std::function<void(AImage*)> frame, std::function<void()> released) {
+        std::lock_guard<std::mutex> lock(companionSinkMutex_);
+        companionSink_ = std::move(frame);
+        companionReleased_ = std::move(released);
+    }
     // Burst of full-size stills (one per exposure, tagged tagId): copies of the
     // repeating request that also fill the capture stream, with STILL_CAPTURE
     // intent and the lens's still-scope keys.
@@ -139,6 +147,16 @@ class CameraDeviceSession final {
     std::string stillKeysCameraId_;
     std::string stillGate_;  // the recipe's vendor gate: its preset adds per-still keys and result probes
     AImageReader* companionReader_ = nullptr;
+    // Companion frames for the probe viewfinder (listener thread -> sink). The listener context outlives readers.
+    struct CompanionListener {
+        CameraDeviceSession* owner = nullptr;
+    };
+    CompanionListener companionListener_{this};
+    std::mutex companionSinkMutex_;
+    std::function<void(AImage*)> companionSink_;
+    std::function<void()> companionReleased_;
+    AImageReader* companionViewfinderReader_ = nullptr;  // the reader whose frames go to the sink
+    void retireCompanionViewfinder() noexcept;
     ANativeWindow* companionWindow_ = nullptr;  // set once the companion is part of the session
     bool companionTargeted_ = false;
     // What addCompanionStream configured, for the session recipe log line.

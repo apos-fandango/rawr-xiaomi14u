@@ -1,4 +1,5 @@
 #pragma once
+#include <array>
 #include <android/asset_manager.h>
 #include <android/hardware_buffer.h>
 #include <android/log.h>
@@ -338,6 +339,24 @@ class SessionEngine {
     std::atomic<int64_t> fullSizeArrivalNs_{0};
     std::atomic<uint64_t> fullSizeSensorNs_{0};
     void onFullSizeFrame(imaging::AcquiredRawFrame frame);
+    // X14U 3x 50 MP probe viewfinder (SessionCompanionViewfinder.cpp): camera-processed companion frames drawn
+    // straight into the swapchain while no RAW frame reaches the RAW viewfinder. Guarded by mu_.
+    struct CompanionPresent {
+        VkCommandPool pool = VK_NULL_HANDLE;
+        std::array<VkCommandBuffer, 2> commands{};
+        std::array<VkSemaphore, 2> acquired{};
+        std::array<VkSemaphore, 2> rendered{};
+        std::array<VkFence, 2> fences{};
+        std::array<AImage*, 2> held{};  // drawn frames, deleted once their GPU work is done
+        std::array<bool, 2> submitted{};
+        uint32_t next = 0;
+        uint64_t frames = 0, skipped = 0;
+    } companion_;
+    void onCompanionFrame(AImage* image);
+    void releaseCompanionFrames();
+    void releaseCompanionFramesLocked();
+    bool ensureCompanionPresentLocked();
+    void destroyCompanionPresentLocked() noexcept;
     // Full-size stills of a capture-stream lens: each still also lands binned
     // (same timestamp) in the viewfinder stream, where the photo claims it;
     // the photo then snapshots the full-size frame instead.
