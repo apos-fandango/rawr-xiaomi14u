@@ -44,15 +44,16 @@ struct FilmScratchGates {
     return buffers * px + (gates.grainProduction ? px * 9u / 4u : 0u);
 }
 
-// Tile-memory engines retain two full-resolution buffers, while all effect
-// scratch lives in one working tile. This mirrors the sliced production
+// Tile-memory engines keep no full-resolution pixel buffer (X14U: input and
+// output run per tile against the images), and all effect scratch lives in
+// one working tile. This mirrors the sliced production
 // grain and the shared spatial arena in SpektraFilm::createSlots().
 [[nodiscard]] inline std::uint64_t estimateFilmTileScratchBytes(std::uint32_t fullW, std::uint32_t fullH,
                                                                 std::uint32_t tileW, std::uint32_t tileH,
                                                                 const FilmScratchGates& gates) noexcept {
     const std::uint64_t fullPixels = std::uint64_t(fullW) * fullH;
     const std::uint64_t tilePixels = std::uint64_t(tileW) * tileH;
-    std::uint64_t tileBuffers = 3u;  // filmRaw, filmDensity, dest
+    std::uint64_t tileBuffers = 4u;  // filmRaw, filmDensity, dest, input
     if (gates.grainPreview) tileBuffers += 1u;
     if (gates.grainProduction) tileBuffers += 3u;                    // densityB, micro A/B
     if (gates.dir) tileBuffers += 1u;                                // corrected density
@@ -61,7 +62,7 @@ struct FilmScratchGates {
     if (gates.cameraDiffusion) tileBuffers += 4u;                    // temp 2x, accum, camera raw
     if (gates.printDiffusion) tileBuffers += 1u;
     tileBuffers += gates.scanner ? 5u : gates.halation ? 4u : gates.dir ? 3u : gates.grainProduction ? 1u : 0u;
-    std::uint64_t bytes = (2u * fullPixels + tileBuffers * tilePixels) * 16u;
+    std::uint64_t bytes = tileBuffers * tilePixels * 16u;
     if (gates.grainProduction) bytes += tilePixels * 9u * sizeof(float);
     if (gates.cameraDiffusion) {
         const std::uint64_t downPixels = std::uint64_t(tileW / 2u + 2u) * (tileH / 2u + 2u);

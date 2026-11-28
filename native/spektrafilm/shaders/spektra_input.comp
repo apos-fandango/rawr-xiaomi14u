@@ -18,6 +18,10 @@ layout(push_constant) uniform InParams {
   vec4 sensorRow0;
   vec4 sensorRow1;
   vec4 sensorRow2;
+  // X14U tile-memory: xy = image origin of this pass (0 for a full frame);
+  // the destination buffer is width-strided from that origin.
+  uvec4 region0;
+  uvec4 region1;
 } params;
 
 void main() {
@@ -25,7 +29,7 @@ void main() {
   if (gid.x >= params.width || gid.y >= params.height) {
     return;
   }
-  const vec4 p = imageLoad(srcImage, ivec2(gid));
+  const vec4 p = imageLoad(srcImage, ivec2(gid + params.region0.xy));
   const vec3 srgb = vec3(
     dot(params.sensorRow0.xyz, p.rgb),
     dot(params.sensorRow1.xyz, p.rgb),

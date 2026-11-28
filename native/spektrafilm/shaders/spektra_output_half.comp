@@ -21,6 +21,9 @@ layout(push_constant) uniform OutParams {
   vec4 sensorRow0;
   vec4 sensorRow1;
   vec4 sensorRow2;
+  // X14U tile-memory: as spektra_output.comp (srcStride 0 = full frame).
+  uvec4 region0;
+  uvec4 region1;
 } params;
 
 uint hashUint(uint value) {
@@ -52,13 +55,17 @@ void main() {
   if (gid.x >= params.width || gid.y >= params.height) {
     return;
   }
-  const uint index = gid.y * params.width + gid.x;
-  vec4 pixel = src[index];
+  const bool region = params.region0.x != 0u;
+  const uvec2 dst = gid + (region ? params.region1.xy : uvec2(0u));
+  const uint srcIndex = region ? (gid.y + params.region0.z) * params.region0.x + gid.x + params.region0.y
+                               : gid.y * params.width + gid.x;
+  const uint index = region ? dst.y * params.region0.w + dst.x : srcIndex;
+  vec4 pixel = src[srcIndex];
   if (params.dither != 0u) {
     const uint seed = index * 747796405u + 0x9e3779b9u;
     const float tpdf =
         0.5 * (hashUnitFloat(seed) + hashUnitFloat(seed ^ 0x85ebca6bu) - 1.0);
     pixel.rgb += tpdf * vec3(halfUlp(pixel.r), halfUlp(pixel.g), halfUlp(pixel.b));
   }
-  imageStore(dstImage, ivec2(gid), pixel);
+  imageStore(dstImage, ivec2(dst), pixel);
 }

@@ -16,6 +16,12 @@ layout(push_constant) uniform OutParams {
   uint height;
   uint dither;
   uint _pad;
+  vec4 _sensorRows[3];
+  // X14U tile-memory (srcStride != 0): region0 = (srcStride, srcX, srcY,
+  // fullWidth), region1.xy = output origin; width/height = the region.
+  // srcStride 0 = the full-frame layout (index = gid.y * width + gid.x).
+  uvec4 region0;
+  uvec4 region1;
 } params;
 
 uint hashUint(uint value) {
@@ -36,8 +42,12 @@ void main() {
   if (gid.x >= params.width || gid.y >= params.height) {
     return;
   }
-  const uint index = gid.y * params.width + gid.x;
-  vec4 pixel = src[index];
+  const bool region = params.region0.x != 0u;
+  const uvec2 dst = gid + (region ? params.region1.xy : uvec2(0u));
+  const uint srcIndex = region ? (gid.y + params.region0.z) * params.region0.x + gid.x + params.region0.y
+                               : gid.y * params.width + gid.x;
+  const uint index = region ? dst.y * params.region0.w + dst.x : srcIndex;
+  vec4 pixel = src[srcIndex];
   if (params.dither != 0u) {
     // TPDF +/-0.5 LSB8: breaks gradient banding, averages to the undithered
     // value. Off by default (parity); enable with SPEKTRA_FILM_OUTPUT_DITHER=1.
@@ -46,5 +56,5 @@ void main() {
         0.5 * (hashUnitFloat(seed) + hashUnitFloat(seed ^ 0x85ebca6bu) - 1.0);
     pixel.rgb += tpdf * vec3(1.0 / 255.0);
   }
-  imageStore(dstImage, ivec2(gid), vec4(clamp(pixel.rgb, vec3(0.0), vec3(1.0)), pixel.a));
+  imageStore(dstImage, ivec2(dst), vec4(clamp(pixel.rgb, vec3(0.0), vec3(1.0)), pixel.a));
 }

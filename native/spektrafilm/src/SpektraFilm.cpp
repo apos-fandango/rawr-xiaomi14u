@@ -22,7 +22,10 @@ namespace spektrafilm_native {
 namespace {
 
 constexpr uint32_t kCorePushBytes = 120;
-constexpr uint32_t kIoPushBytes = 64;
+// IO push: width/height, the sensor matrix rows, then two uvec4 tile-region
+// words (X14U tile-memory per-tile input/output; zero = full frame).
+constexpr uint32_t kIoPushBytes = 96;
+constexpr uint32_t kIoPushWords = kIoPushBytes / 4u;
 
 struct CorePush {
     uint32_t width = 0;
@@ -1172,6 +1175,10 @@ struct SpektraFilm::Impl {
             VkBuffer glareA = VK_NULL_HANDLE;
             VkBuffer glareB = VK_NULL_HANDLE;
             VkBuffer dest = VK_NULL_HANDLE;
+            // X14U: working-rect input (image -> float), so no full-frame
+            // storage buffer is bound on tile-memory engines (Adreno 750
+            // drops accesses past 256 MiB in one binding: 50 MP is ~805 MB).
+            VkBuffer input = VK_NULL_HANDLE;
             // Boost milestone (tiled + boost only): working-size boosted raw,
             // FULL-frame chunk maxima (16B stride, tiny), and host-visible
             // 16B readback the ReduceMax writes directly.
@@ -1679,7 +1686,11 @@ struct SpektraFilm::Impl {
                                 bakedLook.cameraDiffusionEnabled;
         slots.resize(slotCount);
         for (auto& slot : slots) {
-            slot.source = makeBuffer(pixelBytes, pixelUsage,
+            // Tile-memory engines read the input image and write the output
+            // image per tile; source/destination stay as small placeholders
+            // so the shared descriptor writes keep valid bindings.
+            const VkDeviceSize frameBytes = tileMemorySaving ? 256u : pixelBytes;
+            slot.source = makeBuffer(frameBytes, pixelUsage,
                                      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
             // Full-frame effect scratch is skipped on tile-memory engines
             // (only source/destination/filteredEnlarger + host buffers stay
@@ -1801,7 +1812,7 @@ struct SpektraFilm::Impl {
                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
                     VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
                 reinterpret_cast<void**>(&slot.mappedDirCurves));
-            slot.destination = makeBuffer(pixelBytes, pixelUsage,
+            slot.destination = makeBuffer(frameBytes, pixelUsage,
                                           VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
             slot.filteredEnlarger = makeBuffer(
                 filteredBytes, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -1923,6 +1934,8 @@ struct SpektraFilm::Impl {
                 }
                 t.dest = makeBuffer(tileBytes, pixelUsage,
                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
+                t.input = makeBuffer(tileBytes, pixelUsage,
+                                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, nullptr);
             }
         }
         std::vector<VkDescriptorSetLayout> layouts;
@@ -2402,8 +2415,10 @@ struct SpektraFilm::Impl {
                            printScanBindings(orDummy(slot.cameraDiffusionRaw),
                                              slot.destination));
             // inputSet/outputSet image bindings are per-record (views vary).
-            writeBufferSet(slot.inputSet, {{0, slot.source}});
-            writeBufferSet(slot.outputSet, {{0, slot.destination}});
+            // Tile-memory engines: the IO sets work per tile (input image ->
+            // tile input buffer, tile dest -> output image region).
+            writeBufferSet(slot.inputSet, {{0, tileMemorySaving ? slot.tile.input : slot.source}});
+            writeBufferSet(slot.outputSet, {{0, tileMemorySaving ? slot.tile.dest : slot.destination}});
             // Export-set sources are rebound per record when glow is requested;
             // park them on dummy so the set is never uninitialized if used.
             writeBufferSet(slot.glowRatioSet, {{0, dummyBuffer}, {1, dummyBuffer}});
@@ -2436,7 +2451,7 @@ struct SpektraFilm::Impl {
         }
         auto& t = slot.tile;
         std::vector<std::pair<uint32_t, VkBuffer>> exposureBindings = {
-            {0, slot.source},
+            {0, orDummy(t.input)},
             {1, orDummy(t.filmRaw)},
             {2, curve2},
             {3, curve3},
@@ -2820,7 +2835,7 @@ struct SpektraFilm::Impl {
                                 slot.tile.cameraDiffusionRaw, slot.tile.printDiffusionRaw,
                                 slot.tile.scanA, slot.tile.scanB, slot.tile.scanC,
                                 slot.tile.glareA, slot.tile.glareB,
-                                slot.tile.dest}) {
+                                slot.tile.dest, slot.tile.input}) {
                 if (b && destroyedBuffers.insert(b).second) {
                     vkDestroyBuffer(context.device, b, context.allocator);
                 }
@@ -3010,7 +3025,7 @@ void SpektraFilm::Impl::recordBoostMilestone(const SpektraFilmRecordInfo& ri) {
                              VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
                              &barrier, 0, nullptr, 0, nullptr);
     };
-    uint32_t ioPush[16] = {w, h, 0u, 0u};
+    uint32_t ioPush[kIoPushWords] = {w, h, 0u, 0u};
     std::memcpy(&ioPush[4], &ri.sensorToLinearSrgb[0], 3 * sizeof(float));
     std::memcpy(&ioPush[8], &ri.sensorToLinearSrgb[3], 3 * sizeof(float));
     std::memcpy(&ioPush[12], &ri.sensorToLinearSrgb[6], 3 * sizeof(float));
@@ -3035,14 +3050,8 @@ void SpektraFilm::Impl::recordBoostMilestone(const SpektraFilmRecordInfo& ri) {
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
                          &inputReady, 0, nullptr, 0, nullptr);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, inputPipeline);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            ioPipelineLayout, 0, 1, &slot.inputSet, 0,
-                            nullptr);
-    vkCmdPushConstants(cmd, ioPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                       sizeof(ioPush), ioPush);
-    vkCmdDispatch(cmd, (w + 31u) / 32u, (h + 7u) / 8u, 1);
-    computeBarrier();
+    // X14U: the input runs per tile (into the tile input buffer, below);
+    // no full-frame source buffer exists on tile-memory engines.
 
     // Zero the full chunk buffer, then per tile: linear exposure into tile
     // filmRaw + atomic chunk maxima with global chunk mapping.
@@ -3061,10 +3070,23 @@ void SpektraFilm::Impl::recordBoostMilestone(const SpektraFilmRecordInfo& ri) {
         for (uint32_t cx = 0; cx < w; cx += tileW) {
             const uint32_t ww = std::min(tileW, w - cx);
             const uint32_t wh = std::min(tileH, h - cy);
-            // Linear-raw exposure straight into the tile buffer.
+            // Input image region -> tile input buffer (ww-strided).
+            ioPush[0] = ww;
+            ioPush[1] = wh;
+            ioPush[16] = cx;
+            ioPush[17] = cy;
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, inputPipeline);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                    ioPipelineLayout, 0, 1, &slot.inputSet, 0,
+                                    nullptr);
+            vkCmdPushConstants(cmd, ioPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                               sizeof(ioPush), ioPush);
+            vkCmdDispatch(cmd, (ww + 31u) / 32u, (wh + 7u) / 8u, 1);
+            computeBarrier();
+            // Linear-raw exposure from the tile input into the tile buffer.
             push.op = 1u;
             push.pad1 = adaptFlags;
-            push.pad2 = 1u;
+            push.pad2 = 0u;
             push.width = ww;
             push.height = wh;
             push.tileOriginX = cx;
@@ -3537,6 +3559,45 @@ void SpektraFilm::Impl::recordTiledMemory(const SpektraFilmRecordInfo& ri,
                        {{0, t.filmRaw}, {1, linearSrc}});
     }
 
+    // X14U per-tile IO (no full-frame storage buffer): the input pass loads
+    // each working rect from the input image into t.input, the output pass
+    // writes each tile's exact center from t.dest into the output image.
+    uint32_t ioPush[kIoPushWords] = {w, h, 0u, 0u};
+    std::memcpy(&ioPush[4], &ri.sensorToLinearSrgb[0], 3 * sizeof(float));
+    std::memcpy(&ioPush[8], &ri.sensorToLinearSrgb[3], 3 * sizeof(float));
+    std::memcpy(&ioPush[12], &ri.sensorToLinearSrgb[6], 3 * sizeof(float));
+    const char* ditherText = std::getenv("SPEKTRA_FILM_OUTPUT_DITHER");
+    const uint32_t outputDither =
+        (ditherText && (ditherText[0] == '1' || ditherText[0] == 't' || ditherText[0] == 'y')) ? 1u : 0u;
+    VkPipeline outPipeline = outputPipeline;
+    if (ri.output.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
+        if (!outputHalfPipeline) {
+            throw std::invalid_argument(
+                "spektrafilm: RGBA16F output needs hdrOutputSpirv at create");
+        }
+        outPipeline = outputHalfPipeline;
+    }
+    {
+        VkMemoryBarrier outputReady{};
+        outputReady.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        outputReady.srcAccessMask = 0;
+        outputReady.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
+                             &outputReady, 0, nullptr, 0, nullptr);
+    }
+    const auto ioDispatch = [&](VkPipeline pipeline, uint32_t gw, uint32_t gh) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                ioPipelineLayout, 0, 1,
+                                pipeline == inputPipeline ? &slot.inputSet : &slot.outputSet,
+                                0, nullptr);
+        vkCmdPushConstants(cmd, ioPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                           0, sizeof(ioPush), ioPush);
+        vkCmdDispatch(cmd, (gw + 31u) / 32u, (gh + 7u) / 8u, 1);
+        computeBarrier();
+    };
+
     // Tile grid in row-major order; chunked submits cover a sub-range.
     struct TileWork {
         uint32_t cx, cy, cw, ch;
@@ -3566,9 +3627,18 @@ void SpektraFilm::Impl::recordTiledMemory(const SpektraFilmRecordInfo& ri,
             const uint32_t wh = wy1 - wy0;
             const uint32_t ax = cx - wx0;
             const uint32_t ay = cy - wy0;
+            // Working rect of the input image -> t.input (ww-strided).
+            ioPush[0] = ww;
+            ioPush[1] = wh;
+            ioPush[2] = 0u;
+            ioPush[16] = wx0;
+            ioPush[17] = wy0;
+            ioPush[18] = 0u;
+            ioPush[19] = 0u;
+            ioDispatch(inputPipeline, ww, wh);
             if (!processNegative) {
                 tAdapt(exposurePipeline, slot.tileExposureSet,
-                       (halationPass || cameraDiffusionPath) ? 1u : 0u, 1u, ww,
+                       (halationPass || cameraDiffusionPath) ? 1u : 0u, 0u, ww,
                        wh, wx0, wy0, 0u, 0u, ww, wh);
                 // BoostApply from the phase-1 milestone (filmRaw, global max
                 // baked into the readback): feeds diffusion/scatter below.
@@ -3694,8 +3764,7 @@ void SpektraFilm::Impl::recordTiledMemory(const SpektraFilmRecordInfo& ri,
                                 VK_ACCESS_TRANSFER_READ_BIT,
                                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                                 VK_PIPELINE_STAGE_TRANSFER_BIT);
-                copyRows(slot.source, w, t.filmRaw, ww, wx0, wy0, 0u, 0u, ww,
-                         wh);
+                copyRows(t.input, ww, t.filmRaw, ww, 0u, 0u, 0u, 0u, ww, wh);
                 transferBarrier(VK_ACCESS_TRANSFER_WRITE_BIT,
                                 VK_ACCESS_SHADER_READ_BIT,
                                 VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -3756,69 +3825,22 @@ void SpektraFilm::Impl::recordTiledMemory(const SpektraFilmRecordInfo& ri,
                 tCore(scannerPipeline, slot.tileScanSets[8], 8u, 0u, 0u, ww,
                       wh, wx0, wy0, 0u, 0u, ww, wh);
             }
-            // Accumulate the exact center into the full-frame destination.
-            transferBarrier(VK_ACCESS_SHADER_WRITE_BIT,
-                            VK_ACCESS_TRANSFER_READ_BIT,
-                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT);
-            copyRows(t.dest, ww, slot.destination, w, ax, ay, cx, cy, cw, ch);
-            transferBarrier(VK_ACCESS_TRANSFER_WRITE_BIT,
-                            VK_ACCESS_SHADER_READ_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+            // The exact center straight into the output image.
+            computeBarrier();
+            ioPush[0] = cw;
+            ioPush[1] = ch;
+            ioPush[2] = outputDither;
+            ioPush[16] = ww;
+            ioPush[17] = ax;
+            ioPush[18] = ay;
+            ioPush[19] = w;
+            ioPush[20] = cx;
+            ioPush[21] = cy;
+            ioDispatch(outPipeline, cw, ch);
         }
     }
-    // Output dispatch (full-frame, mirrors record() tail). Skipped for
-    // non-final chunks (the destination accumulates across submits; only
-    // the last chunk needs to pack the image).
-    if (!ri.tileFinalize) {
-        return;
-    }
-    {
-        uint32_t ioPush[16] = {w, h, 0u, 0u};
-        std::memcpy(&ioPush[4], &ri.sensorToLinearSrgb[0], 3 * sizeof(float));
-        std::memcpy(&ioPush[8], &ri.sensorToLinearSrgb[3], 3 * sizeof(float));
-        std::memcpy(&ioPush[12], &ri.sensorToLinearSrgb[6], 3 * sizeof(float));
-        const char* ditherText = std::getenv("SPEKTRA_FILM_OUTPUT_DITHER");
-        ioPush[2] = (ditherText && (ditherText[0] == '1' || ditherText[0] == 't' ||
-                                    ditherText[0] == 'y'))
-                        ? 1u
-                        : 0u;
-        // Per-record output image binding (tile path shares slot.outputSet).
-        VkDescriptorImageInfo outputImage{};
-        outputImage.imageView = ri.output.view;
-        outputImage.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-        VkWriteDescriptorSet imageWrite{};
-        imageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        imageWrite.dstBinding = 1;
-        imageWrite.descriptorCount = 1;
-        imageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        imageWrite.dstSet = slot.outputSet;
-        imageWrite.pImageInfo = &outputImage;
-        vkUpdateDescriptorSets(device, 1, &imageWrite, 0, nullptr);
-        VkMemoryBarrier outputReady{};
-        outputReady.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        outputReady.srcAccessMask = 0;
-        outputReady.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        vkCmdPipelineBarrier(cmd, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1,
-                             &outputReady, 0, nullptr, 0, nullptr);
-        VkPipeline outPipeline = outputPipeline;
-        if (ri.output.format == VK_FORMAT_R16G16B16A16_SFLOAT) {
-            if (!outputHalfPipeline) {
-                throw std::invalid_argument(
-                    "spektrafilm: RGBA16F output needs hdrOutputSpirv at create");
-            }
-            outPipeline = outputHalfPipeline;
-        }
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, outPipeline);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                                ioPipelineLayout, 0, 1, &slot.outputSet, 0,
-                                nullptr);
-        vkCmdPushConstants(cmd, ioPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
-                           0, sizeof(ioPush), ioPush);
-        vkCmdDispatch(cmd, (w + 31u) / 32u, (h + 7u) / 8u, 1);
-    }
+    // X14U: each tile's center went straight to the output image above, so
+    // there is no full-frame pack at the last chunk.
 }
 
 bool SpektraFilm::validateCreateInfo(const SpektraFilmCreateInfo& ci,
@@ -4192,7 +4214,7 @@ void SpektraFilm::record(const SpektraFilmRecordInfo& ri) {
     // IO push: width/height + row-major sensor->linear-sRGB as 3x vec4
     // rows (vec4 rows keep push-constant alignment unambiguous; the output
     // shader declares only width/height and ignores the rest).
-    uint32_t ioPush[16] = {w, h, 0u, 0u};
+    uint32_t ioPush[kIoPushWords] = {w, h, 0u, 0u};
     static_assert(sizeof(ri.sensorToLinearSrgb) == 9 * sizeof(float),
                   "sensor matrix must be 9 floats");
     std::memcpy(&ioPush[4], &ri.sensorToLinearSrgb[0], 3 * sizeof(float));
@@ -4512,7 +4534,7 @@ void SpektraFilm::record(const SpektraFilmRecordInfo& ri) {
     // 1=source(float) 2=filmRaw(log) 3=filmDensity 4=static hanatos table
     // 5=frame constants (host-known content, control experiment).
     // Visualizer shader maps the value range visibly; see spectra_output_vis.comp.
-    if (const char* tapText = std::getenv("SPEKTRA_FILM_DEBUG_TAP")) {
+    if (const char* tapText = impl.tileMemorySaving ? nullptr : std::getenv("SPEKTRA_FILM_DEBUG_TAP")) {
         const int tap = std::atoi(tapText);
         VkBuffer tapBuffer = slot.destination;
         if (tap == 1) {
@@ -4548,16 +4570,20 @@ void SpektraFilm::record(const SpektraFilmRecordInfo& ri) {
                              VK_PIPELINE_STAGE_TRANSFER_BIT,
                          VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &inputReady,
                          0, nullptr, 0, nullptr);
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, impl.inputPipeline);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
-                            impl.ioPipelineLayout, 0, 1, &slot.inputSet, 0, nullptr);
-    vkCmdPushConstants(cmd, impl.ioPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
-                       sizeof(ioPush), ioPush);
-    vkCmdDispatch(cmd, groupsX, groupsY, 1);
-    computeBarrier();
-    diagnosticTap("source_linear_srgb", slot.source);
-    if (profileUpto <= 1) {
-        return;
+    // X14U: tile-memory engines load the input per tile (recordTiledMemory),
+    // so they skip the full-frame copy (and own no full-frame source).
+    if (!impl.tileMemorySaving) {
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, impl.inputPipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                                impl.ioPipelineLayout, 0, 1, &slot.inputSet, 0, nullptr);
+        vkCmdPushConstants(cmd, impl.ioPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0,
+                           sizeof(ioPush), ioPush);
+        vkCmdDispatch(cmd, groupsX, groupsY, 1);
+        computeBarrier();
+        diagnosticTap("source_linear_srgb", slot.source);
+        if (profileUpto <= 1) {
+            return;
+        }
     }
     // Tile-memory path (memory-saving engines): per-tile chain into the
     // working-size arena with center accumulation. Full-frame records are
