@@ -13,6 +13,7 @@ import com.rawr.camera.settings.model.selectOption
 import com.rawr.camera.settings.model.withRunAsRowsOff
 import com.rawr.camera.settings.model.runAsTarget
 import com.rawr.camera.settings.model.runsAsCompanion
+import com.rawr.camera.settings.model.runsAsCompanionForShot
 import com.rawr.camera.integration.NativeCaptureScreenController
 import com.rawr.camera.integration.RawPreviewCoordinator
 import com.rawr.camera.integration.StillCaptureCoordinator
@@ -266,6 +267,8 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     }.distinctUntilChanged() }
 
     private var fullSizeJob: kotlinx.coroutines.Job? = null
+    /** The "Rawr view" shot started its own AF run (the view was on continuous AF): cleared when it's back. */
+    @Volatile private var refocusedForShot = false
 
     /** A 50 MP shot is running: the capture screen locks the lens row and controls until it's back. */
     private val fullSizeBusyFlow = kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -290,6 +293,13 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
     /** The 50 MP shot (see [fullSizeShot]); a press while one runs is ignored. */
     fun shootFullSize() {
         if (fullSizeJob?.isActive == true) return
+        // X14U "Rawr view": the run-as lens is a companion-viewfinder one (1x at f/1.67-f/4 with 50 mp, or the 3x 50 MP
+        // set to Rawr view): its session has no RAW viewfinder frames to wait for, and it focuses by itself.
+        val companionShot = run {
+            val lenses = latestSettings.effectiveLensProfiles(DeviceLensDefaults.lenses)
+            val id = controller.state.value.selectedLensId.trim()
+            lenses.firstOrNull { it.name.trim().equals(id, ignoreCase = true) }?.runsAsCompanionForShot(lenses) == true
+        }
         fullSizeBusyFlow.value = true
         fullSizeJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             fun status(message: String?) {
@@ -307,13 +317,32 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                 // session would start its own auto white balance cold: the ultra-wide's especially, at 12 fps).
                 previewCoordinator.setViewfinderHold(true)
                 previewCoordinator.setCarryWhiteBalance(true)
+                previewCoordinator.setCompanionShot(companionShot)
                 previewCoordinator.setRunAsForShot(true)
                 // Shoot only on the full-size session's own frames (never a 12 MP session on the way); a few of them
-                // for exposure to settle.
-                if (!waitFor(8_000L) { previewCoordinator.heldNewFullSizeFrames() >= 3 }) {
+                // for exposure to settle. A companion session shows it's up with its camera-processed preview frames.
+                val started = if (companionShot) waitFor(8_000L) { previewCoordinator.heldNewCompanionFrames() >= 3 }
+                else waitFor(8_000L) { previewCoordinator.heldNewFullSizeFrames() >= 3 }
+                if (!started) {
                     status("50 MP didn't start")
                     kotlinx.coroutines.delay(2_500L)
                     return@launch
+                }
+                if (companionShot && controller.state.value.focus.mode != com.rawr.camera.model.FocusMode.Mf) {
+                    // A carried focus distance lands elsewhere in the full-size mode: AF runs in the shot's session at
+                    // the spot the view focused on (the tap point, or the centre), then the stills.
+                    status("50 MP · focusing…")
+                    refocusedForShot = controller.state.value.focus.status == com.rawr.camera.model.TargetStatus.Hidden
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        controller.dispatch(com.rawr.camera.architecture.Refocus)
+                    }
+                    kotlinx.coroutines.delay(150L)
+                    waitFor(3_000L) {
+                        controller.state.value.focus.status.let {
+                            it == com.rawr.camera.model.TargetStatus.Settled || it == com.rawr.camera.model.TargetStatus.Failed
+                        }
+                    }
+                    status("50 MP…")
                 }
                 kotlinx.coroutines.delay(300L)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -328,6 +357,14 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
                 kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
                     previewCoordinator.setViewfinderHold(true)
                     previewCoordinator.setRunAsForShot(false)
+                    previewCoordinator.setCompanionShot(false)
+                    // The AF run was the shot's own: back to the continuous AF the view had.
+                    if (refocusedForShot) {
+                        refocusedForShot = false
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            controller.dispatch(com.rawr.camera.architecture.ClearAutofocus)
+                        }
+                    }
                     waitFor(4_000L) {
                         previewCoordinator.heldNewFrames() - previewCoordinator.heldNewFullSizeFrames() >= 2
                     }

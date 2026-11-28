@@ -978,7 +978,8 @@ internal fun X14uCaptureLayout(
             editorFor = { key ->
                 if (key == ZOOM_KEY) zoomRuler(zoom, zoomChain, setZoom)
                 else if (key == PHOTO_FOCUS_KEY) photoFocusEditor(state, dispatch, onMfTouch)
-                else if (key == "f" && fiftyMp && apertureRow(lensOptions) >= 0) X14uEditor.Message("f/2 while 50 MP is on")
+                else if (key == "f" && fiftyMp && apertureRow(lensOptions).let { it >= 0 && it in lensOptions!!.locked })
+                    X14uEditor.Message("f/2 while 50 MP is on")
                 else exposureEditor(key, state, dispatch, lensOptions, recordingLock, onQuickEvent, wbTint, { wbTint = !wbTint }, onMfTouch)
             }
         }
@@ -1854,10 +1855,14 @@ private fun RowScope.X14uOptionToggles(
     lensOptionSlots(quick.lensOptions).filter { it.second.toggle }.forEach { (name, _) ->
         val row = options?.options?.indexOfFirst { it.name.trim().equals(name, ignoreCase = true) } ?: -1
         val runsAsLens = row >= 0 && options!!.options[row].choices.any { !it.runAs.isNullOrBlank() }
-        // 50 MP runs at f/2 only: with another aperture chosen the chip is greyed, and a tap turns 50 MP on at f/2
-        // (its choice locks Aperture to f/2; the chosen aperture comes back when 50 MP goes off).
+        // A 50 MP choice that locks Aperture (to f/2) greys the chip at another aperture, and a tap turns 50 MP on at
+        // f/2 (the chosen aperture comes back when 50 MP goes off). One without the lock (the 1x with its "Rawr view"
+        // aperture 50 MP) stays as bright at every aperture.
         val apertureRow = apertureRow(options)
-        val otherAperture = runsAsLens && apertureRow >= 0 &&
+        val locksAperture = apertureRow >= 0 && row >= 0 && options!!.options[row].choices.any { c ->
+            !c.runAs.isNullOrBlank() && c.locks.keys.any { it.trim().equals(options.options[apertureRow].name.trim(), ignoreCase = true) }
+        }
+        val otherAperture = runsAsLens && locksAperture && apertureRow >= 0 &&
             options!!.options[apertureRow].choices.getOrNull(options.picks.getOrElse(apertureRow) { 0 })
                 ?.label?.trim()?.equals("f/2", ignoreCase = true) == false
         val available = options != null && row >= 0 && row !in options.unavailable && !((burst || video) && runsAsLens)
@@ -2299,8 +2304,9 @@ private fun exposureCells(
     val awb = state.autoWhiteBalanceTemperatureK?.let { "${(it / 10f).roundToInt() * 10}K" } ?: "AWB"
     return listOf(
         X14uCell("ev", ev, "EV", evManual),
-        // 50 MP on the main lens: the shot runs at f/2 (aperture at 50 MP doesn't work yet), so the cell shows F2, greyed.
-        if (fiftyMp && row >= 0) X14uCell("f", "F2", "A", enabled = false)
+        // 50 MP on the main lens with its aperture locked to f/2: the cell shows F2, greyed. Without the lock (aperture
+        // 50 MP in Rawr view) the aperture stays settable.
+        if (fiftyMp && row >= 0 && row in options!!.locked) X14uCell("f", "F2", "A", enabled = false)
         else X14uCell("f", aperture.replace("f/", "F"), "A", enabled = row >= 0),
         X14uCell("ss", ss, "S", ssManual, auto = !ssManual),
         X14uCell("iso", iso, "ISO", isoManual, auto = !isoManual),

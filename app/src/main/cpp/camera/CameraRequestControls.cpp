@@ -370,6 +370,9 @@ CameraControlApplyResult applyCameraControlState(CameraRequest* request, const C
         const uint8_t idle = ACAMERA_CONTROL_AF_TRIGGER_IDLE;
         result.focusStatus = request->setU8(ACAMERA_CONTROL_AF_MODE, 1, &afAuto);
         (void)request->setU8(ACAMERA_CONTROL_AF_TRIGGER, 1, &idle);
+    } else if (pin && shotHandover().companionShot() && !manualFocus) {
+        // "Rawr view" 50 MP (companion session): the shot job runs AF there (tap region + trigger above); a carried
+        // distance would land elsewhere in the full-size mode.
     } else if (pin && (manualFocus || pin->focusDiopters) && state.capabilities.manualFocusSupported) {
         const uint8_t afOff = ACAMERA_CONTROL_AF_MODE_OFF;
         const uint8_t idle = ACAMERA_CONTROL_AF_TRIGGER_IDLE;

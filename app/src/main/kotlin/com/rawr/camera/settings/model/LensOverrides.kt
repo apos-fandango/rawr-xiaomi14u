@@ -223,11 +223,30 @@ fun LensProfile.runAsTarget(): String? {
         .firstOrNull()
 }
 
-/** X14U 3x 50 MP: the chosen option runs this lens as one whose viewfinder is the camera-processed companion. */
-fun LensProfile.runsAsCompanion(lenses: List<LensProfile>): Boolean {
-    val target = runAsTarget() ?: return false
-    return lenses.firstOrNull { it.name.trim().equals(target, ignoreCase = true) }?.session?.companionViewfinder == true
+/**
+ * The lens the chosen run-as choice runs this lens as, with this lens's picks carried to the rows they share (as the
+ * camera runs it): the 1x's Aperture pick picks the 50MP lens's Aperture row, whose non-f/2 choices patch it into a
+ * companion-viewfinder lens. Null when no chosen choice runs as another lens.
+ */
+fun LensProfile.runAsResolved(lenses: List<LensProfile>): LensProfile? {
+    val name = runAsTarget() ?: return null
+    val target = lenses.firstOrNull { it.name.trim().equals(name, ignoreCase = true) } ?: return null
+    return runCatching {
+        com.rawr.camera.settings.preferences.LensOptionsCodec.resolve(
+            com.rawr.camera.settings.preferences.LensOptionsCodec.videoTarget(this, target, video = false))
+    }.getOrNull() ?: target
 }
+
+/**
+ * X14U 3x 50 MP "Camera preview": the chosen option runs this lens as one whose viewfinder is the camera-processed
+ * companion, all the time while chosen. A "Rawr view" one ([LensSession.companionPerShot]) runs only for the shot.
+ */
+fun LensProfile.runsAsCompanion(lenses: List<LensProfile>): Boolean =
+    runAsResolved(lenses)?.session?.let { it.companionViewfinder && !it.companionPerShot } == true
+
+/** X14U "Rawr view" 50 MP: the shot switches to a companion-viewfinder lens (AF at the shot, frames held off screen). */
+fun LensProfile.runsAsCompanionForShot(lenses: List<LensProfile>): Boolean =
+    runAsResolved(lenses)?.session?.let { it.companionViewfinder && it.companionPerShot } == true
 
 /** True when the lens holds overrides for this lens row's pill dot (its own or its run-as lens's). */
 fun LensProfile.hasOverrides(): Boolean = overrides.isNotEmpty()

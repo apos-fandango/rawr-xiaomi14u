@@ -298,6 +298,12 @@ data class LensSession(
      * run) and the photo stream is used only by stills. Needs a photo stream and a targeted companion.
      */
     val companionViewfinder: Boolean = false,
+    /**
+     * X14U "Rawr view": a [companionViewfinder] lens that runs only for the shot. While composing, the lens that runs
+     * as it keeps Rawr's own live view; the shutter switches to this lens, runs AF there, takes the stills and
+     * switches back. False ("Camera preview"): it runs all the time while chosen, with the camera's own picture.
+     */
+    val companionPerShot: Boolean = false,
     /** Provider behaviours this lens avoids, from [CAMERA_WORKAROUNDS]. */
     val workarounds: List<String> = emptyList()
 )

@@ -72,9 +72,23 @@ public:
     // Gain the shot's camera needs at the carried exposure. Xiaomi 14 Ultra only: the 0.5x (camera 3) full-size
     // readout gives 0.70x the binned mode's raw signal at the same shutter and ISO (diagnostics 14 Nov: 47.5/68.2,
     // 64.1/91.4, 66.3/93.3). Other phones' camera ids mean other lenses: no gain.
+    // The 14 Ultra's IMX858 (0.5x camera 3, 3x camera 4) full-size readout is ~0.5 EV less sensitive than its
+    // 12 MP mode at the same settings; the 1x (camera 2) isn't.
     static float fullSizeGain(const std::string& cameraId) {
-        return cameraId == "3" && isXiaomi14Ultra() ? 1.0f / 0.70f : 1.0f;
+        return (cameraId == "3" || cameraId == "4") && isXiaomi14Ultra() ? 1.0f / 0.70f : 1.0f;
     }
+    // X14U "Rawr view" 50 MP: the shot's session is a companion-viewfinder one (camera-processed preview + still
+    // RAW, opMode 0x900F). Its frames aren't drawn (the 12 MP view holds), its focus comes from an AF run in that
+    // session (a carried distance lands elsewhere in the full-size mode), and they are counted for the shot job.
+    void setCompanionShot(bool on) {
+        companionShot_.store(on, std::memory_order_relaxed);
+        newCompanionFrames_.store(0, std::memory_order_relaxed);
+    }
+    bool companionShot() const { return companionShot_.load(std::memory_order_relaxed); }
+    void noteCompanionFrame() {
+        if (hold_.load(std::memory_order_relaxed)) newCompanionFrames_.fetch_add(1, std::memory_order_relaxed);
+    }
+    int64_t newCompanionFrames() const { return newCompanionFrames_.load(std::memory_order_relaxed); }
     std::optional<AppliedExposure> carriedExposure() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return carriedExposure_;
@@ -92,6 +106,7 @@ public:
         holdStartGeneration_.store(lastGeneration_.load(std::memory_order_relaxed), std::memory_order_relaxed);
         newFrames_.store(0, std::memory_order_relaxed);
         newFullSizeFrames_.store(0, std::memory_order_relaxed);
+        newCompanionFrames_.store(0, std::memory_order_relaxed);
         hold_.store(on, std::memory_order_relaxed);
     }
     bool hold() const { return hold_.load(std::memory_order_relaxed); }
@@ -130,6 +145,8 @@ private:
     std::atomic<uint64_t> holdStartGeneration_{0};
     std::atomic<int64_t> newFrames_{0};
     std::atomic<int64_t> newFullSizeFrames_{0};
+    std::atomic<bool> companionShot_{false};
+    std::atomic<int64_t> newCompanionFrames_{0};
 };
 
 inline ShotHandover& shotHandover() noexcept {

@@ -280,6 +280,18 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePrevie
     return jlong(rawrcam::camera::shotHandover().newFrames());
 }
 
+// X14U "Rawr view" 50 MP: the shot's session is a companion-viewfinder one (frames held off screen, AF at the shot).
+extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setCompanionShot(JNIEnv*, jobject,
+                                                                                                      jboolean on) {
+    rawrcam::camera::shotHandover().setCompanionShot(on == JNI_TRUE);
+}
+
+// Companion (camera-processed preview) frames since the hold was set: the companion shot session is up.
+extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_heldNewCompanionFrames(JNIEnv*,
+                                                                                                            jobject) {
+    return jlong(rawrcam::camera::shotHandover().newCompanionFrames());
+}
+
 // Of those, full-size frames (the 50 MP session itself, not a 12 MP restart on the way).
 extern "C" JNIEXPORT jlong JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_heldNewFullSizeFrames(JNIEnv*,
                                                                                                               jobject) {

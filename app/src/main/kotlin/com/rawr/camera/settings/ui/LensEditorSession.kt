@@ -171,6 +171,20 @@ internal fun SessionAdvancedGroup(lens: LensProfile, onChange: (LensProfile) -> 
             SettingDivider()
             StreamDuringPhotosRow(lens, onChange)
         }
+        // X14U: a camera-processed-viewfinder lens (3x 50 MP) either runs all the time or only for the shot.
+        if (session.companionViewfinder) {
+            SettingDivider()
+            DropdownChoiceRow(
+                title = "Viewfinder",
+                selected = session.companionPerShot,
+                values = listOf(false, true),
+                label = { if (it) "Rawr view" else "Camera preview" },
+                supportingText = if (session.companionPerShot) "The lens that runs as this one keeps Rawr's own live view; " +
+                    "the shutter switches here, focuses, takes the photo and switches back (about 1.5-2.5 s)"
+                else "This lens runs all the time while chosen: the camera's own picture, instant shutter and live AF",
+                onSelect = { onChange(lens.session { copy(companionPerShot = it) }) }
+            )
+        }
         FieldColumn {
             CaptureNumberField("Startup delay (ms)", session.startupDelayMs, Modifier.testTag(lensEditorTag("startup_delay")),
                 "Wait after the session is configured before the first request, up to 5000") { update { copy(startupDelayMs = it) } }

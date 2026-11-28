@@ -51,6 +51,12 @@ class NativePreviewEngine {
     /** Of those, full-size (50 MP) frames. */
     external fun heldNewFullSizeFrames(): Long
 
+    /** X14U "Rawr view" 50 MP: the shot's session is a companion-viewfinder one (AF at the shot, frames held off screen). */
+    external fun setCompanionShot(on: Boolean)
+
+    /** Camera-processed preview frames since the hold was set (the companion shot session is up). */
+    external fun heldNewCompanionFrames(): Long
+
     /** X14U video stabilisation on/off, with the lens's focal length over the sensor width. */
     external fun setStabilizer(enabled: Boolean, focalNorm: Float)
 

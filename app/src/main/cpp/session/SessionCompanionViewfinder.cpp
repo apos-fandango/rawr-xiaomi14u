@@ -9,6 +9,7 @@
 #include <chrono>
 #include <string>
 
+#include "camera/ShotHandover.h"
 #include "diagnostics/logging/NativeLog.h"
 #include "session/SessionEngine.h"
 #include "vulkan/VulkanDispatch.h"
@@ -96,6 +97,13 @@ void SessionEngine::releaseCompanionFrames() {
 
 void SessionEngine::onCompanionFrame(AImage* image) {
     if (!image) return;
+    // X14U "Rawr view" 50 MP shot: the 12 MP view holds on screen while the shot's companion session runs; its
+    // frames only tell the shot job the session is up.
+    if (camera::shotHandover().hold()) {
+        camera::shotHandover().noteCompanionFrame();
+        AImage_delete(image);
+        return;
+    }
     std::lock_guard<std::mutex> lock(mu_);
     const auto skip = [&] {
         AImage_delete(image);
