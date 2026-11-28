@@ -43,6 +43,9 @@ git cherry-pick <first> <next> ...
 |---|---|---|---|
 | **Lens options** (X14U) | Aperture (four steps, f/1.6 to f/4), DCG, ISZ 2x and 50 MP as rows on one lens; per-lens overrides, video DCP per lens, native f-numbers. | `LensOptions.kt`, `LensProfiles.kt` | 8246f38, 7572538, 25f704c, 7b3dd57 |
 | **Real 50 MP RAW** (X14U) | 1x (f/2 only) and 0.5x full-size RAW, with autofocus from the 12 MP viewfinder. See [50 MP findings](#50-mp-findings). | `CaptureViewModel.kt` | 604483d, 4c0222c, 23902d9, 9aec427, 41ad6d8, 7bdb218, 6ea9468 |
+| **3x 50 MP** (X14U) | A companion session (opMode 0x900F: a camera-processed 1920x1440 viewfinder beside the RAW16 8192x6144 still) as a run-as lens setting, so the 3x takes real full-size RAW with working focus. AWB never runs there, so the 12 MP view's white balance is carried in; manual WB starts from it. | `CameraDeviceSession.cpp`, `ShotHandover.h`, `CameraWhiteBalanceControls.cpp` | bc92c5c, c4a942e, 88580d9, 1c8096c, e1e51ea, ff92b36, 685ee13, 5d96340, 4ac18e5 |
+| **25 MP JPEG** (portable) | The 50 MP chip's third stage, "25" (only while JPEGs are saved): the JPEG (SDR or Ultra HDR, base and gain map) is scaled to half the area at the end (8192x6144 -> 5792x4344, linear-light Lanczos), the DNG stays 50 MP. Kept per lens; the JPEG description notes it. | `OutputAspect.h`, `JpegCaptureWriter.cpp`, `FullSizeJpegSettings.kt` | df710c6 |
+| **Manual WB across restarts** (portable) | Full-size stills keep a fixed viewfinder WB, and manual WB survives the camera restart after a 50 MP shot (the transform seed is kept). | `CameraDeviceSession.cpp`, `NativeCameraController.cpp` | 5d96340, 8699131 |
 | **Digital zoom** (portable) | Pinch / zoom ruler across the whole lens chain (0.5–10x), centred crop, tap mapping; the zoom and 35 mm equivalent written into JPEG and DNG; the crop kept in merged shots. | `ZoomChain.kt`, `OutputAspect.h`, `DngExif.cpp`, `JpegExif.cpp`, `CaptureJob.cpp` | 5376ffa, 268a2dc, b0c2146, b718302, bf9c6b2, fcde197 |
 | **Long exposures** (portable) | Long shutters run as their own capture, not the next viewfinder frame. | `NativeCameraController.cpp` | 271a72c, 565b087 |
 | **Burst** (portable) | Hold to shoot at 10/20/30 fps, a pre-capture ring (PRE 1–3 s), Pixel-style stacks Google Photos groups, a private store with a viewer, develop in Rawr or another editor. | `BurstStore.kt`, `BurstViewerActivity.kt`, `PrecaptureRing.h`, `SingleFrameCoordinator.cpp` | 935d75d, f0bd25c, 12a150b, c4223f0, 3d523df, a180961, dcd16ae, e799e09, 3080a17, 752975d |
@@ -65,7 +68,8 @@ git cherry-pick <first> <next> ...
 | **Focus aids** | Focus loupe with a GPU focus meter; MF ruler on a diopter scale; peaking that ignores sensor specks. | `X14uFocusLoupe.kt`, `focus_peaking.comp` | 1bbd356, 0734974, bc97dbb |
 | **Level** | Floating horizon line, steadier lock, smooth change to the bubble. | `X14uToolsPanel.kt` | 6f5f8bf, b757f3c |
 | **Photography Kit grip over USB** (X14U accessory) | Dial (EV, shutter, ISO, WB, aperture, focus, zoom), zoom lever, record and shutter buttons, read as raw USB HID reports. | `GripUsbReader.kt`, `GripControls.kt` | 713a2fa, 79063f0, 2fa2f3a, 0e4043f, 581f0ab, 3ef8c3a |
-| **Presets** | Saved capture presets (P0 baseline, P1…) with a strip and details sheet. | `CapturePresets.kt`, `X14uPresets.kt` | e356097, e7d9bf3, c7869fd |
+| **Presets** | Saved capture presets (P0 baseline, P1…) with a strip and details sheet; Lens off by default when saving, and a group can be left out. | `CapturePresets.kt`, `X14uPresets.kt` | e356097, e7d9bf3, c7869fd, 6cf512b |
+| **LUT strength** (portable) | Look → Profile → STRENGTH for an imported LUT (0–100 %, steps of 5, kept per LUT): the tonemap shader mixes the LUT over RAWR NTRL (each with its own grade) below 100 %, per frame without an engine rebuild. Viewfinder, stills, video and the Renderer recipe; greyed with film on. | `tonemap.comp`, `TonemapMath.h`, `LutStrengthSettings.kt` | 8530f8d |
 | **Classic / Bronze styles** | A camera-body look (leather, metal, drum rulers); the body is drawn once into a GPU layer. | `X14uClassic.kt` | 2c3ee52, 10bfd96, 7d1703e, 74d7aa8 |
 | **Landscape** | Pills, chips and panels turn as a whole. | `X14uCaptureLayout.kt` | c5b872f, 207fe16, a51e4e8 |
 
@@ -117,16 +121,21 @@ git cherry-pick <first> <next> ...
 ### 50 MP findings
 
 - **1x:** the phone's full-size RAW mode exists only at f/2. Other apertures only come through the phone's own processed route, so the 50 mp chip locks Aperture to f/2.
-- **3x and 5x:** the phone's "50 MP" there is a binned 12 MP frame upscaled, not a real full-size readout. The real 3x readout also fixes focus when its session starts, and manual focus doesn't move it, so focus can't be corrected. Both were tried and removed (6ea9468).
+- **3x and 5x:** the phone's own "50 MP" route there is a binned 12 MP frame upscaled, not a real full-size readout. The 3x now takes a real readout through a companion session (opMode 0x900F) that keeps focus working; the 5x is still out.
+- **Detail:** at normal view 50 MP holds about the same real detail as 12 MP (cross-spectrum of tripod pairs), but renders cleaner when magnified; scaled to 25 MP it is about 40 % less grainy than a 12 MP shot enlarged.
+- **Quad-Bayer:** every X14U sensor reports a QCFA sensor, but turning remosaic off gives ERROR_CAMERA_DEVICE, so there is no raw quad-Bayer readout.
+- **Brightness:** the IMX858 (0.5x, 3x, 5x) at 50 MP is ~0.55 EV darker than at 12 MP with the same settings; the 1x isn't.
 - **0.5x:** real 50 MP RAW works, with a measured ISO gain (×1.43, 7bdb218).
 
 ## Known issues and open ends
+
+- **Film simulation on 50 / 25 MP shots** develops only part of the image. Suspected: the film's full-frame source and destination buffers (16 B/px, ~805 MB each at 8192x6144) are beyond the GPU's storage-buffer range (Adreno reports 128 MiB; 12 MP at ~200 MB still works). The planned fix reads and writes each film tile straight from and to the images.
 
 - **One camera frame at record start:** with YUV, 5 of 7 takes lost one camera frame in the first quarter second (`INGRESS_QUEUE_PRESSURE rawDropped=1`). It's not the YUV setup time (moved outside the lock in 46015fb, and it still happened). Next step: per-frame GPU and import timing for the first 2 s of a take.
 - **24 fps on the 1x video lens:** the 1x's video lens (1xV, the 16:9 4096x2304 stream) kills the camera a second after a fixed 24 fps range (diagnostics 20261125_112228 and _131228: `Device error received, code 1`, then `encoder output format missing csd-0`, since no frame ever reaches the encoder). Worked around in ab2f3a7: at 24 fps a lens records on its own 4:3 stream. The cause in the camera HAL is unknown.
 - **Idle viewfinder at 60 fps:** drops about one camera frame a second; not investigated yet.
 - **Heat:** the RAW viewfinder runs the GPU about two thirds busy even when idle. Candidates to cut: the HDR+ ring in video (`video_mf_off`), the half-size monitor (`half_monitor`), and UI redraws while recording.
-- **Upstream and forks:** from utalpt, the YUV input and the one-pass fast path are in; his clean recording view, Gyroflow log, WB picker (tap-to-neutralise) and the new look sheet are not ported yet. Upstream is merged up to #162 (skipped: #160 OPPO, vivo, Samsung and UI tooling).
+- **Upstream and forks:** from utalpt, the YUV input and the one-pass fast path are in; his clean recording view, Gyroflow log, WB picker (tap-to-neutralise) and the new look sheet are not ported yet. Upstream is merged up to #168 (skipped: #160 OPPO, vivo, Samsung and UI tooling).
 
 ## Branches
 
