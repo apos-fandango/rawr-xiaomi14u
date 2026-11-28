@@ -67,8 +67,11 @@ constexpr uint64_t acquisitionMagicV18 = 0x524157524a4f4212ull;
 constexpr uint64_t magicV19 = 0x524157524a4f4213ull;
 constexpr uint64_t acquisitionMagicV20 = 0x524157524a4f4214ull;
 // v21/v22 append the X14U still framing (digital-zoom crop, aspect, JPEG upscale) of the DNGs and JPEG.
-constexpr uint64_t magic = 0x524157524a4f4215ull;
-constexpr uint64_t acquisitionMagic = 0x524157524a4f4216ull;
+constexpr uint64_t magicV21 = 0x524157524a4f4215ull;
+constexpr uint64_t acquisitionMagicV22 = 0x524157524a4f4216ull;
+// v23/v24 append the X14U "25MP" JPEG flag.
+constexpr uint64_t magic = 0x524157524a4f4217ull;
+constexpr uint64_t acquisitionMagic = 0x524157524a4f4218ull;
 constexpr uint64_t acquisitionPrefixBytes = 2 * (sizeof(uint32_t) + sizeof(uint64_t));
 std::mutex acquisitionMutex;
 constexpr uint64_t footer = 0x434f4d4d49545445ull;
@@ -494,6 +497,7 @@ void writeHeader(Writer& w, CaptureJob& job) {
     w(job.dng.gps);
     w(job.dng.cropZoom, job.dng.cropAspect, job.mergedDng.cropZoom, job.mergedDng.cropAspect, job.jpeg.output.cropZoom,
       job.jpeg.output.cropAspect, job.jpeg.output.upscaleZoom);
+    w(job.jpeg.output.halfArea);
 }
 // The context fields predate the lens profile ones; put the job's back on every frame.
 void attachLensProfile(CaptureJob& job, const std::optional<geometry::LensDistortionModel>& distortion,
@@ -663,11 +667,13 @@ CaptureJob loadImpl(const std::string& path,
     RetiredDenoise retired{};
     uint64_t version = 0;
     r(version);
-    const bool acquisition = version == acquisitionMagic || version == acquisitionMagicV20 ||
+    const bool acquisition = version == acquisitionMagic || version == acquisitionMagicV22 ||
+                             version == acquisitionMagicV20 ||
                              version == acquisitionMagicV18 || version == acquisitionMagicV16 ||
                              version == acquisitionMagicV14 || version == acquisitionMagicV12 ||
                              version == acquisitionMagicV10;
-    const bool hasCrop = version == magic || version == acquisitionMagic;
+    const bool hasHalfArea = version == magic || version == acquisitionMagic;
+    const bool hasCrop = hasHalfArea || version == magicV21 || version == acquisitionMagicV22;
     const bool hasGps = hasCrop || version == magicV19 || version == acquisitionMagicV20;
     const bool hasMirror = hasGps || version == magicV17 || version == acquisitionMagicV18;
     const bool hasDcp = hasMirror || version == magicV15 || version == acquisitionMagicV16;
@@ -735,6 +741,7 @@ CaptureJob loadImpl(const std::string& path,
         if (hasCrop)
             r(job.dng.cropZoom, job.dng.cropAspect, job.mergedDng.cropZoom, job.mergedDng.cropAspect,
               job.jpeg.output.cropZoom, job.jpeg.output.cropAspect, job.jpeg.output.upscaleZoom);
+        if (hasHalfArea) r(job.jpeg.output.halfArea);
     } else {
         readLegacyJob(r, job);
         if (version == magicV4 || version == magicV3 || version == magicV2)

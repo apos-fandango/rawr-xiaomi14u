@@ -177,6 +177,7 @@ void fillJpegContext(JNIEnv* env, rawrcam::capture::JpegCaptureRequest& jpeg, ji
     jpeg.output.cropAspect = rawrcam::encoding::outputAspect().load(std::memory_order_relaxed);
     jpeg.output.cropZoom = rawrcam::encoding::outputZoom().load(std::memory_order_relaxed);
     jpeg.output.upscaleZoom = rawrcam::encoding::outputUpscale().load(std::memory_order_relaxed);
+    jpeg.output.halfArea = rawrcam::encoding::outputHalfArea().load(std::memory_order_relaxed);
     jpeg.develop = rawrcam::jni::readCaptureDevelopSettings(
         {pipelineDiagnosticsEnabled, colorRenderProfile, jString(env, importedLutProfileId), dualAutoContrast,
          dualContrastPercent, fccSteps, defringeEnabled, defringeStrength, defringeEdgeThreshold, defringeLumaFloor,
@@ -199,6 +200,12 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreview
     rawrcam::encoding::outputZoom().store(c, std::memory_order_relaxed);
     rawrcam::encoding::outputUpscale().store(upscale == JNI_TRUE, std::memory_order_relaxed);
     rawrcam::session::setViewfinderZoom(handle(h), c);
+}
+
+// X14U 50 MP chip at "25MP": the next stills' JPEGs (full-size ones only) are scaled to half the area.
+extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setFullSizeJpegHalf(
+    JNIEnv*, jobject, jboolean on) {
+    rawrcam::encoding::outputHalfArea().store(on == JNI_TRUE, std::memory_order_relaxed);
 }
 
 // X14U video horizon lock: roll past the kept framing (radians) and the fixed crop (>= 1; 1 = off). Atomics only,

@@ -46,6 +46,10 @@ struct JpegCaptureContext {
     // Digital zoom crop factor (1 = none); upscaleZoom resizes the crop back to the uncropped size.
     float cropZoom = 1.0f;
     bool upscaleZoom = true;
+    // X14U "25MP": scale a full-size (50 MP) still's JPEG to half the area at the end (see OutputAspect.h).
+    bool halfArea = false;
+    // Filled by the writer when it scaled: the size before (for the description note).
+    std::uint32_t halfAreaFromWidth = 0, halfAreaFromHeight = 0;
     ChromaSubsampling subsampling = ChromaSubsampling::Yuv420;
     rawrcam::color::UltraHdrParams ultraHdr;
     std::string rendererDisplayName;

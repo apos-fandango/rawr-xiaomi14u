@@ -34,8 +34,10 @@ inline std::string appendProcessingTimes(const JpegCaptureContext& c, double jpe
     // X14U digital zoom: a line under the header with the zoomed focal length (EXIF keeps the lens's own).
     LensMetadata generatedLens;
     const std::string description = withDescriptionNote(
-        c.imageDescription,
-        digitalZoomNote(c.cropZoom, lensMetadataForJpeg(c, generatedLens).focalLength35mm, c.upscaleZoom));
+        withDescriptionNote(c.imageDescription, digitalZoomNote(c.cropZoom,
+                                                                lensMetadataForJpeg(c, generatedLens).focalLength35mm,
+                                                                c.upscaleZoom)),
+        halfAreaNote(c.halfAreaFromWidth > 0, c.halfAreaFromWidth, c.halfAreaFromHeight));
     out << description;
     // One blank line before TIMINGS whether or not the settings block ends its last line.
     if (!description.empty() && description.back() != '\n') out << '\n';

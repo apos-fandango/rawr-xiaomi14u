@@ -1434,7 +1434,8 @@ internal fun X14uCaptureLayout(
                 // and DCG, so the bar's items step in past them (22 dp marks + a little), as the slot does at the foot.
                 sideInset = if (isVideo && videoTop < cutoutTop + CaptureDimens.TopBarHeight)
                     ((layoutWidth - videoRect.width) / 2 + 22.dp + 4.dp).coerceAtLeast(0.dp) else 0.dp,
-                toggles = { X14uOptionToggles(quick, lensOptions, isVideo, enabled = !recordingLock, orientation, onQuickEvent, burst || pano) },
+                toggles = { X14uOptionToggles(quick, lensOptions, isVideo, enabled = !recordingLock, orientation, onQuickEvent, burst || pano,
+                    jpeg = state.jpegEnabled && !state.capabilities.dngOnly) },
                 toggleCount = x14uOptionToggleCount(quick, lensOptions, isVideo, burst || pano),
                 toolsOpen = toolsOpen,
                 onToggleTools = { openTools(!toolsOpen) },
@@ -1822,8 +1823,11 @@ private fun RowScope.X14uOptionToggles(
     orientation: Orientation,
     onQuickEvent: (CaptureQuickEvent) -> Unit,
     /** Burst / Pano shoot 12 MP frames: a row that runs the shot as another lens (50 MP) is hidden there, as in video. */
-    burst: Boolean = false
+    burst: Boolean = false,
+    /** JPEGs are saved: the 50 MP chip gets its third stage, 25MP (the JPEG at half the area; the DNG stays 50 MP). */
+    jpeg: Boolean = false
 ) {
+    val halfLenses by com.rawr.camera.settings.model.FullSizeJpegSettings.halfLenses.collectAsState()
     val haptics = LocalCaptureHaptics.current
     val classic = isClassicStyle()
     lensOptionSlots(quick.lensOptions).filter { it.second.toggle }.forEach { (name, _) ->
@@ -1839,6 +1843,9 @@ private fun RowScope.X14uOptionToggles(
         // Video, Burst and Pano shoot 12 MP frames: no 50 MP chip there.
         if ((video && !available) || (burst && runsAsLens)) return@forEach
         val on = available && options!!.picks.getOrElse(row) { 0 } == 1
+        // 50 MP chip: off -> 50MP -> 25MP -> off while JPEGs are saved; off <-> 50MP with DNG only.
+        val lensKey = options?.lensId?.trim()?.lowercase().orEmpty()
+        val half = runsAsLens && jpeg && on && lensKey in halfLenses
         TopBarSlot {
             val color = when {
                 on -> if (enabled) CaptureColors.Accent else CaptureColors.Accent.copy(alpha = .45f)
@@ -1846,7 +1853,7 @@ private fun RowScope.X14uOptionToggles(
                 else -> Color.White.copy(alpha = .22f)
             }
             Text(
-                name.uppercase().replace(" ", ""),
+                name.uppercase().replace(" ", "").let { if (half) it.replace("50", "25") else it },
                 fontFamily = X14uFont,
                 fontWeight = FontWeight.Medium,
                 fontSize = dpText(13f),
@@ -1855,9 +1862,17 @@ private fun RowScope.X14uOptionToggles(
                 modifier = Modifier
                     .captureClickable(shape = RoundedCornerShape(8.dp), enabled = available && enabled, role = Role.Switch) {
                         haptics.selection()
-                        onQuickEvent(CaptureQuickEvent.SelectLensOption(options!!.lensId, row, if (on) 0 else 1))
+                        val lensId = options!!.lensId
+                        when {
+                            // 50MP -> 25MP: same session, only the JPEG size changes.
+                            runsAsLens && jpeg && on && !half -> com.rawr.camera.settings.model.FullSizeJpegSettings.setHalf(lensId, true)
+                            else -> {
+                                if (runsAsLens) com.rawr.camera.settings.model.FullSizeJpegSettings.setHalf(lensId, false)
+                                onQuickEvent(CaptureQuickEvent.SelectLensOption(lensId, row, if (on) 0 else 1))
+                            }
+                        }
                     }
-                    .semantics { contentDescription = "$name ${if (on) "on" else "off"}" }
+                    .semantics { contentDescription = "$name ${if (half) "25 MP" else if (on) "on" else "off"}" }
                     .padding(horizontal = 6.dp, vertical = 10.dp)
                     // Off is just greyed (no strike line).
                     .uprightInLandscape(orientation)

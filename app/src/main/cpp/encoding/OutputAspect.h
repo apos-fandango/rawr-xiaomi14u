@@ -27,6 +27,26 @@ inline std::atomic<bool>& outputUpscale() noexcept {
     return value;
 }
 
+// X14U 50 MP chip "25MP": JPEGs of full-size stills are scaled to half the area (each side / sqrt 2) at the very
+// end, after sharpening and the look; DNGs keep every pixel. Only stills with a long side of 6000+ (50 MP) scale, so
+// a 12 MP frame taken while the chip says 25MP is never touched.
+inline std::atomic<bool>& outputHalfArea() noexcept {
+    static std::atomic<bool> value{false};
+    return value;
+}
+inline bool halfAreaApplies(bool on, std::uint32_t width, std::uint32_t height) noexcept {
+    return on && std::max(width, height) >= 6000u;
+}
+inline std::uint32_t halfAreaSide(std::uint32_t side) noexcept {
+    return std::max<std::uint32_t>(2u, std::uint32_t(std::lround(double(side) / std::sqrt(2.0) / 2.0)) * 2u);
+}
+inline std::string halfAreaNote(bool applied, std::uint32_t fromW, std::uint32_t fromH) {
+    if (!applied) return {};
+    char buffer[96];
+    std::snprintf(buffer, sizeof(buffer), "Scaled to 25 MP from %ux%u\n", unsigned(fromW), unsigned(fromH));
+    return buffer;
+}
+
 struct CropRect {
     std::uint32_t x = 0, y = 0, width = 0, height = 0;
     [[nodiscard]] bool full(std::uint32_t w, std::uint32_t h) const noexcept { return width == w && height == h; }

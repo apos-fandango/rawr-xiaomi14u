@@ -333,6 +333,8 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     /** X14U: applies to captures from the next shutter press (process-wide, no session needed). */
     fun setOutputAspect(aspect: Float) = native.setOutputAspect(aspect)
     fun setDigitalZoom(crop: Float, upscale: Boolean) = postNative { native.setDigitalZoom(nativeHandle, crop, upscale) }
+    /** X14U "25MP": process-wide atomic, read at the shutter. */
+    fun setFullSizeJpegHalf(on: Boolean) = native.setFullSizeJpegHalf(on)
     /** Straight to native atomics (sensor thread, many times a second). */
     fun setHorizonLock(roll: Float, crop: Float, natural: Boolean, viewRoll: Float, fit: Boolean) =
         native.setHorizonLock(roll, crop, natural, viewRoll, fit)

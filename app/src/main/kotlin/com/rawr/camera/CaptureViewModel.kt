@@ -913,6 +913,16 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         com.rawr.camera.burst.TimedBurstSettings.init(application)
         com.rawr.camera.settings.model.FaceSettings.init(application)
         com.rawr.camera.settings.model.AccentSettings.init(application)
+        com.rawr.camera.settings.model.FullSizeJpegSettings.init(application)
+        viewModelScope.launch {
+            // X14U "25MP": the shown lens's choice, read natively at the shutter (only 50 MP frames scale).
+            kotlinx.coroutines.flow.combine(
+                com.rawr.camera.settings.model.FullSizeJpegSettings.halfLenses,
+                controller.state.map { it.selectedLensId }
+            ) { half, lensId -> lensId.trim().lowercase() in half }
+                .distinctUntilChanged()
+                .collect { previewCoordinator.setFullSizeJpegHalf(it) }
+        }
         viewModelScope.launch {
             com.rawr.camera.settings.model.FaceSettings.values.collect { previewCoordinator.setFaceOptions(it.focus, it.exposure) }
         }

@@ -254,9 +254,18 @@ bool JpegCaptureWriter::start(std::uint64_t requestId, const void* rgba8, std::s
                          (static_cast<std::size_t>(crop.y) * width + crop.x) * 4u;
     width = crop.width;
     height = crop.height;
-    const std::uint32_t outW = upscale ? unzoomed.width : width, outH = upscale ? unzoomed.height : height;
+    std::uint32_t outW = upscale ? unzoomed.width : width, outH = upscale ? unzoomed.height : height;
+    // X14U "25MP": a full-size still's JPEG at half the area, in the same Lanczos pass as the zoom upscale.
+    const bool half = halfAreaApplies(context.halfArea, outW, outH);
+    if (half) {
+        context.halfAreaFromWidth = outW;
+        context.halfAreaFromHeight = outH;
+        outW = halfAreaSide(outW);
+        outH = halfAreaSide(outH);
+    }
+    const bool resize = upscale || half;
     try {
-        worker_ = std::thread([this, requestId, pixels, width, height, pitch, upscale, outW, outH,
+        worker_ = std::thread([this, requestId, pixels, width, height, pitch, resize, outW, outH,
                                context = std::move(context)]() mutable {
             // Background priority: file encoding must never preempt camera or
             // preview threads, especially on throttled silicon.
@@ -269,15 +278,17 @@ bool JpegCaptureWriter::start(std::uint64_t requestId, const void* rgba8, std::s
             diagnostics::RuntimeTraceRecorder::instance().record(diagnostics::RuntimeTraceStage::JpegEncodeBegin, 0,
                                                                  requestId);
             const auto t0 = std::chrono::steady_clock::now();
-            // Digital zoom upscale: Lanczos-3 in linear light back to the unzoomed size.
+            // Digital zoom upscale / "25MP": Lanczos-3 in linear light to the output size.
             std::vector<unsigned char> upscaled;
-            if (upscale) {
+            if (resize) {
                 upscaled = resizeRgba8Lanczos3(pixels, width, height, static_cast<std::size_t>(pitch), outW, outH, true);
                 if (upscaled.size() == static_cast<std::size_t>(outW) * outH * 4u) {
                     pixels = upscaled.data();
                     width = outW;
                     height = outH;
                     pitch = static_cast<int>(outW * 4u);
+                } else {
+                    context.halfAreaFromWidth = context.halfAreaFromHeight = 0;
                 }
             }
             tjhandle handle = tj3Init(TJINIT_COMPRESS);
@@ -500,6 +511,35 @@ bool JpegCaptureWriter::startUltraHdr(std::uint64_t requestId, const void* rgba8
                         mapWidth = tw;
                         mapHeight = th;
                     }
+                }
+            }
+            // X14U "25MP": a full-size still at half the area; the map scales with it (its own values, no
+            // linearisation), as for the digital-zoom upscale above.
+            if (halfAreaApplies(context.halfArea, width, height)) {
+                const std::uint32_t tw = halfAreaSide(width), th = halfAreaSide(height);
+                const double s = double(tw) / double(width);
+                const auto mw = std::max<std::uint32_t>(1u, std::uint32_t(std::lround(mapWidth * s)));
+                const auto mh = std::max<std::uint32_t>(1u, std::uint32_t(std::lround(mapHeight * s)));
+                auto base = resizeRgba8Lanczos3(pixels, width, height, std::size_t(width) * 4u, tw, th, true);
+                std::vector<unsigned char> map = resizeRgba8Lanczos3(mapPixels, mapWidth, mapHeight,
+                                                                     std::size_t(mapWidth) * 4u, mw, mh, false);
+                if (hasCaptureColor) {
+                    auto colour = resizeRgba8Lanczos3(mapPixels + std::size_t(mapWidth) * mapHeight * 4u, mapWidth,
+                                                      mapHeight, std::size_t(mapWidth) * 4u, mw, mh, false);
+                    map.insert(map.end(), colour.begin(), colour.end());
+                }
+                if (base.size() == std::size_t(tw) * th * 4u &&
+                    map.size() == std::size_t(mw) * mh * 4u * (hasCaptureColor ? 2u : 1u)) {
+                    context.halfAreaFromWidth = width;
+                    context.halfAreaFromHeight = height;
+                    croppedBase = std::move(base);
+                    croppedMap = std::move(map);
+                    pixels = croppedBase.data();
+                    width = tw;
+                    height = th;
+                    mapPixels = croppedMap.data();
+                    mapWidth = mw;
+                    mapHeight = mh;
                 }
             }
             tjhandle baseHandle = tj3Init(TJINIT_COMPRESS);
