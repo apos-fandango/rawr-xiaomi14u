@@ -85,6 +85,8 @@ uint64_t SessionEngine::requestRawStillCapture(rawrcam::encoding::dng::DngCaptur
         auto capturedTone = std::make_shared<tonemap::TonemapParams>(*dngContext.captureTone);
         // The frame is picked later; noise-limit by the latest viewfinder frame.
         applyAutoKey(*capturedTone, latestLiftNoise(capturedTone->aePostGain * std::exp2(capturedTone->exposureEV)));
+        // X14U: the shutter-time tone is rebuilt from the UI's values; the LUT strength rides the live look.
+        capturedTone->lutStrength = look_.toneParams().lutStrength;
         dngContext.captureTone = std::move(capturedTone);
     }
     // Long exposure: the viewfinder runs a shorter shutter, so the capture is
@@ -327,11 +329,13 @@ uint64_t SessionEngine::startPreparedMultiframeCapture(
         if (baseDng.captureTone) {
             auto capturedTone = std::make_shared<tonemap::TonemapParams>(*baseDng.captureTone);
             applyAutoKey(*capturedTone, noise);
+            capturedTone->lutStrength = tone.lutStrength;
             baseDng.captureTone = std::move(capturedTone);
         }
         if (mergedDng.captureTone) {
             auto capturedTone = std::make_shared<tonemap::TonemapParams>(*mergedDng.captureTone);
             applyAutoKey(*capturedTone, noise);
+            capturedTone->lutStrength = tone.lutStrength;
             mergedDng.captureTone = std::move(capturedTone);
         }
         baseDng.autoKeyEv = tone.adaptiveTone.liftEv;
