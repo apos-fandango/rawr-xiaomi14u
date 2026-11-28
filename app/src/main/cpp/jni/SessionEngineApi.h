@@ -121,6 +121,7 @@ void setTonemapParameters(EngineHandle handle, float exposureEV, float blackPoin
                           float saturation, float vibrance) noexcept;
 // values: tonemap_integration::kAgxControlCount AgX controls.
 void setAgxParameters(EngineHandle handle, const float* values) noexcept;
+void setLutStrength(EngineHandle handle, float strength) noexcept;
 void setAssetManager(EngineHandle handle, AAssetManager* assetManager) noexcept;
 void setFilmSimEnabled(EngineHandle handle, bool enabled) noexcept;
 void setViewfinderDivisor(EngineHandle handle, uint32_t divisor) noexcept;

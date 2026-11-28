@@ -65,6 +65,9 @@ struct TonemapParams {
     AgxParams agx{};
     // Appended (capture journals accept the shorter layout).
     LocalToneParams localTone{};
+    // X14U: render-transform LUT mix over RAWR NTRL (0..1; 1 = the LUT alone). Multiplies the chain intensity.
+    // Appended: journals saved before it read with 1.
+    float lutStrength = 1.0f;
 };
 
 // Renderer configuration. These values describe the current validated rendering

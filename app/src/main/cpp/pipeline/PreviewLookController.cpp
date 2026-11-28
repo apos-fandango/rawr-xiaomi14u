@@ -6,6 +6,7 @@
 #include <vulkan/vulkan_android.h>
 
 #include <algorithm>
+#include <cmath>
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -489,6 +490,13 @@ void PreviewLookController::setAgxParameters(const float* values) {
     }
     std::lock_guard<std::mutex> lock(transitionMutex_);
     tonemapParams_.agx = agx;
+    publishTone_(tonemapParams_);
+}
+void PreviewLookController::setLutStrength(float strength) {
+    const float s = std::isfinite(strength) ? std::clamp(strength, 0.0f, 1.0f) : 1.0f;
+    std::lock_guard<std::mutex> lock(transitionMutex_);
+    if (tonemapParams_.lutStrength == s) return;
+    tonemapParams_.lutStrength = s;
     publishTone_(tonemapParams_);
 }
 }  // namespace rawrcam::pipeline

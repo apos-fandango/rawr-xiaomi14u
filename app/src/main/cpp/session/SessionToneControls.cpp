@@ -106,5 +106,6 @@ void SessionEngine::setTonemapParameters(float exposureEV, float blackPointEV, f
 }
 
 void SessionEngine::setAgxParameters(const float* values) { look_.setAgxParameters(values); }
+void SessionEngine::setLutStrength(float strength) { look_.setLutStrength(strength); }
 
 }  // namespace rawrcam::session

@@ -125,6 +125,12 @@ internal class CaptureSettingsSync(
         }
         syncStream(LiveTonemapState.values.filterNotNull()) { applyTonemapState(it) }
         syncStream(LiveTonemapState.agx.filterNotNull()) { previewCoordinator.setAgxParameters(it) }
+        // X14U: the selected imported LUT's own strength (1 for every other profile), per frame: no engine rebuild.
+        syncStream(
+            kotlinx.coroutines.flow.combine(values.map { it.activeUserLutId() }.distinctUntilChanged(),
+                LutStrengthSettings.strengths) { id, _ -> LutStrengthSettings.strengthFor(id) }
+                .distinctUntilChanged()
+        ) { previewCoordinator.setLutStrength(it) }
         firstApplies = bindings.size
         bindings.forEach { collect -> scope.launch { collect() } }
     }

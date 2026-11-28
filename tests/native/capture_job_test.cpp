@@ -77,6 +77,7 @@ int main(int argc, char** argv) {
     j.tone.renderTransform = tonemap::RenderTransform::Rec709;
     j.tone.agx.whiteEv = 9.25f;
     j.tone.localTone = {2.5f, 1.5f, 3.5f, 8u, 1u};
+    j.tone.lutStrength = 0.6f;
     j.filmEnabled = true;
     j.film.film = 14;
     j.film.paper = 5;
@@ -110,7 +111,8 @@ int main(int argc, char** argv) {
     for (const uint32_t oldSize : {uint32_t(offsetof(tonemap::TonemapParams, adaptiveTone)),
                                    uint32_t(offsetof(tonemap::TonemapParams, agx)),
                                    uint32_t(offsetof(tonemap::TonemapParams, localTone)),
-                                   uint32_t(offsetof(tonemap::TonemapParams, localTone) + offsetof(tonemap::LocalToneParams, sigma))}) {
+                                   uint32_t(offsetof(tonemap::TonemapParams, localTone) + offsetof(tonemap::LocalToneParams, sigma)),
+                                   uint32_t(offsetof(tonemap::TonemapParams, lutStrength))}) {
         std::ifstream in(path, std::ios::binary);
         std::string bytes((std::istreambuf_iterator<char>(in)), {});
         uint32_t fullSize = sizeof(j.tone);
@@ -134,7 +136,11 @@ int main(int argc, char** argv) {
         const bool hadLocal = oldSize > offsetof(tonemap::TonemapParams, localTone);
         assert(old.tone.localTone.shadowsEv == (hadLocal ? 2.5f : 0.0f));
         assert(old.tone.localTone.highlightsEv == (hadLocal ? 1.5f : 2.0f));
-        assert(old.tone.localTone.sigma == 5.0f && old.tone.localTone.coarsestMip == 6u && !old.tone.localTone.boostLocalContrast);
+        if (oldSize == offsetof(tonemap::TonemapParams, lutStrength))
+            assert(old.tone.localTone.sigma == 3.5f && old.tone.localTone.coarsestMip == 8u && old.tone.localTone.boostLocalContrast);
+        else
+            assert(old.tone.localTone.sigma == 5.0f && old.tone.localTone.coarsestMip == 6u && !old.tone.localTone.boostLocalContrast);
+        assert(old.tone.lutStrength == 1.0f);
         std::filesystem::remove(oldPath);
     }
 
@@ -176,6 +182,7 @@ int main(int argc, char** argv) {
     assert(restored.film.film == 14 && restored.film.filmExposureEv == .75f && restored.tone.exposureEV == -1.5f);
     assert(restored.tone.renderTransform == tonemap::RenderTransform::Rec709 && restored.tone.agx.whiteEv == 9.25f);
     assert(restored.tone.localTone.shadowsEv == 2.5f && restored.tone.localTone.highlightsEv == 1.5f);
+    assert(restored.tone.lutStrength == 0.6f);
     assert(restored.tone.localTone.sigma == 3.5f && restored.tone.localTone.coarsestMip == 8u && restored.tone.localTone.boostLocalContrast == 1u);
     assert(restored.tone.adaptiveTone.liftEv == 1.25f && restored.tone.adaptiveTone.keyEv == -5.0f &&
            restored.tone.adaptiveTone.highlightEv == -0.5f);

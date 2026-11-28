@@ -406,6 +406,13 @@ vec3 srgbOETF(vec3 x) {
     return mix(hi, lo, lessThanEqual(x, vec3(0.0031308)));
 }
 
+vec3 rawrNeutralRender(vec3 renderedLinear) {
+    vec3 rawrNeutralInput = !COMBINE_NEUTRAL_GAMUT
+        ? rawrCst(renderedLinear, RAWR_GAMUT_ACESCG_AP1, RAWR_TF_LINEAR, RAWR_GAMUT_DWG, RAWR_TF_DAVINCI_INTERMEDIATE)
+        : rawrTonemapCst(renderedLinear, RAWR_GAMUT_ACESCG_AP1, RAWR_TF_LINEAR, RAWR_GAMUT_DWG, RAWR_TF_DAVINCI_INTERMEDIATE, P.neutralGamut);
+    return sampleRawrNeutralTechnical(applyGrade(rawrNeutralInput, DWG_LUMA, P.gradePivot.x, 0.0, RAWR_TF_DAVINCI_INTERMEDIATE, RAWR_GRADE_SET_NTRL, renderedLinear));
+}
+
 void main() {
 #if RAWR_TONEMAP_RAW_INPUT
     // Cooperative RAW preload must precede the bounds return: every lane in
@@ -495,11 +502,10 @@ void main() {
             encoded = P.lutOutput.w == 0u
                           ? lutOut
                           : rawrUserCst(lutOut, P.lutOutput.x, P.lutOutput.y, RAWR_GAMUT_SRGB_REC709, RAWR_TF_SRGB, P.userOutputGamut);
+            // X14U LUT strength: below 1 the LUT is mixed over RAWR NTRL in display encoding (each with its own grade).
+            if (P.lutBlend.x < 1.0) encoded = mix(rawrNeutralRender(renderedLinear), encoded, P.lutBlend.x);
         } else {
-            vec3 rawrNeutralInput = !COMBINE_NEUTRAL_GAMUT
-                ? rawrCst(renderedLinear, RAWR_GAMUT_ACESCG_AP1, RAWR_TF_LINEAR, RAWR_GAMUT_DWG, RAWR_TF_DAVINCI_INTERMEDIATE)
-                : rawrTonemapCst(renderedLinear, RAWR_GAMUT_ACESCG_AP1, RAWR_TF_LINEAR, RAWR_GAMUT_DWG, RAWR_TF_DAVINCI_INTERMEDIATE, P.neutralGamut);
-            encoded = sampleRawrNeutralTechnical(applyGrade(rawrNeutralInput, DWG_LUMA, P.gradePivot.x, 0.0, RAWR_TF_DAVINCI_INTERMEDIATE, RAWR_GRADE_SET_NTRL, renderedLinear));
+            encoded = rawrNeutralRender(renderedLinear);
         }
 
         // The NTRL LUT and "use directly" user LUTs can overshoot [0,1] slightly;

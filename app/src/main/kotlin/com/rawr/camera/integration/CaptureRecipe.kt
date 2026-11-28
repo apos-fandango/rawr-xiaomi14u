@@ -3,7 +3,9 @@ package com.rawr.camera.integration
 import com.rawr.camera.BuildConfig
 import com.rawr.camera.model.TonemapCatalog
 import com.rawr.camera.model.valueFor
+import com.rawr.camera.settings.model.LutStrengthSettings
 import com.rawr.camera.settings.model.MultiframeMergeAlgorithm
+import com.rawr.camera.settings.model.activeUserLutId
 import com.rawr.camera.settings.model.SettingsValues
 import com.rawr.camera.settings.model.toLegacy
 import org.json.JSONObject
@@ -105,7 +107,9 @@ internal object CaptureRecipe {
         put("tone", JSONObject().apply {
             val value = v.activeImageTone()
             TonemapCatalog.all.forEach { put(it.jsonKey, value.valueFor(it)) }
-            put("colorRenderingStrength", value.colorRenderingStrength)
+            // X14U: the shot's per-LUT strength, so the Renderer re-renders the mix the camera saved.
+            put("colorRenderingStrength", v.activeUserLutId()?.let { LutStrengthSettings.strengthFor(it) }
+                ?: value.colorRenderingStrength)
             put("wbTemperature", value.wbTemperature)
             put("wbTint", value.wbTint)
             put("outputColorSpaceId", value.outputColorSpaceId)

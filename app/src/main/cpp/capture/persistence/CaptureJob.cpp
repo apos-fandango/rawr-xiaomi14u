@@ -229,6 +229,9 @@ struct Reader {
         bytes(&n, sizeof(n));
         if (n == sizeof(v)) {
             bytes(&v, sizeof(v));
+        } else if (n == offsetof(tonemap::TonemapParams, lutStrength)) {
+            v = {};
+            bytes(&v, n);  // Before X14U LUT strength; the LUT stays at full strength.
         } else if (n == offsetof(tonemap::TonemapParams, localTone) + offsetof(tonemap::LocalToneParams, sigma)) {
             v = {};
             bytes(&v, n);  // Two-field local tone recipe; new controls keep their defaults.

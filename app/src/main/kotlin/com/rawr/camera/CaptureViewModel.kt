@@ -914,6 +914,7 @@ class CaptureViewModel(application: Application) : AndroidViewModel(application)
         com.rawr.camera.settings.model.FaceSettings.init(application)
         com.rawr.camera.settings.model.AccentSettings.init(application)
         com.rawr.camera.settings.model.FullSizeJpegSettings.init(application)
+        com.rawr.camera.settings.model.LutStrengthSettings.init(application)
         viewModelScope.launch {
             // X14U "25MP": the shown lens's choice, read natively at the shutter (only 50 MP frames scale).
             kotlinx.coroutines.flow.combine(

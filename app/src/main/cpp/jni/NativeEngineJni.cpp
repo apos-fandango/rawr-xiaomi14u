@@ -1122,6 +1122,11 @@ extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreview
     env->GetFloatArrayRegion(controls, 0, kCount, values);
     rawrcam::session::setAgxParameters(handle(h), values);
 }
+// X14U: strength of the selected imported LUT (0..1, mixed over RAWR NTRL); 1 for every other profile.
+extern "C" JNIEXPORT void JNICALL Java_com_rawr_camera_integration_NativePreviewEngine_setLutStrength(
+    JNIEnv*, jobject, jlong h, jfloat strength) {
+    rawrcam::session::setLutStrength(handle(h), strength);
+}
 // Film simulation (neutral naming; Experimental placement is UI-only).
 // Float array contract (must be FILM_LOOK_FLOAT_COUNT):
 // 0 filmExposureEv, 1 printExposureEv, 2 filmPushPullStops, 3 filmGamma,

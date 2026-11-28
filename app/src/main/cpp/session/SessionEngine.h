@@ -85,6 +85,7 @@ class SessionEngine {
                               float contrast, float whitePointEV, float highlightBiasEV, float saturation,
                               float vibrance);
     void setAgxParameters(const float* values);
+    void setLutStrength(float strength);
     void setFilmSimEnabled(bool enabled);
     void setViewfinderDivisor(uint32_t divisor);
     void setFilmSimLook(const spektrafilm_native::FilmLook& look);

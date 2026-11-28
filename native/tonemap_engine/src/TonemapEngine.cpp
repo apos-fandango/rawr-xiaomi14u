@@ -204,7 +204,8 @@ GpuParameters buildGpuParameters(const TonemapParams& params, const float* matri
     gpu.lutOutput[1] = static_cast<uint32_t>(lutPayload.outputSpace.transfer);
     gpu.lutOutput[2] = static_cast<uint32_t>(lutPayload.placement);
     gpu.lutOutput[3] = static_cast<uint32_t>(lutPayload.afterAction);
-    gpu.lutBlend[0] = lutPayload.intensity;
+    gpu.lutBlend[0] = lutPayload.intensity *
+                      (std::isfinite(params.lutStrength) ? std::clamp(params.lutStrength, 0.0f, 1.0f) : 1.0f);
     gpu.lutBlend[1] = conversions.combineUser ? 1.f : 0.f;
     gpu.lutBlend[2] = conversions.combineNeutral ? 1.f : 0.f;
     for (uint32_t i = 0; i < lut::kMaxGpuLutStages; ++i) {
@@ -1088,7 +1089,8 @@ std::optional<GradeTapBlock> TonemapEngine::gradeTapBlock(const TonemapParams& p
     // encoding.
     const auto& payload = impl_->userLutPayload;
     const bool userLut = p.renderTransform == RenderTransform::Existing && payload.enabled &&
-                         payload.intensity > 0.0f && payload.placement == lut::LutPlacement::RenderTransform;
+                         payload.intensity > 0.0f && p.lutStrength > 0.0f &&
+                         payload.placement == lut::LutPlacement::RenderTransform;
     const auto transfer = p.renderTransform != RenderTransform::Existing ? directGradeTransfer(p)
                           : userLut ? userGradeTransfer(payload)
                                     : color::TransferFunction::DaVinciIntermediate;

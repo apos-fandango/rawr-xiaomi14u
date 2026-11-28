@@ -804,6 +804,8 @@ class RawPreviewCoordinator(application: Application) : AutoCloseable {
     fun setAgxParameters(values: com.rawr.camera.settings.model.AgxValues) =
         postNative { native.setAgxParameters(nativeHandle, values.toNativeArray()) }
 
+    fun setLutStrength(strength: Float) = postNative { native.setLutStrength(nativeHandle, strength) }
+
     fun setTonemapParameters(tone: com.rawr.camera.model.ImageToneState) {
         val contract = com.rawr.camera.model.TonemapControlContract
         setTonemapParameters(tone.renderExposure, contract.blackPointNativeFromUi(tone.blacks),

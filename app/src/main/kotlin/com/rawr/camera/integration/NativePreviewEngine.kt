@@ -361,6 +361,9 @@ class NativePreviewEngine {
     /** All AgX controls in AgxParameter (native AgxControl) order. */
     external fun setAgxParameters(handle: Long, controls: FloatArray)
 
+    /** X14U: imported LUT strength (0..1, over RAWR NTRL); 1 for other profiles. */
+    external fun setLutStrength(handle: Long, strength: Float)
+
     external fun setTonemapParameters(
         handle: Long,
         exposureEV: Float,

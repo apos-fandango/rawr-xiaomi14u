@@ -511,6 +511,7 @@ internal fun X14uCaptureLayout(
         toolsChoice = null
     }
     val film = state.filmSimEnabled && !isVideo && filmQuick != null
+    val lutStrengths by com.rawr.camera.settings.model.LutStrengthSettings.strengths.collectAsState()
     // The recipe editor takes the exposure row (film cells) and the slot (their editors), its header above.
     val filmEditing = filmEdit != null && film
     // Photo (not Pro): the AMSI row instead of the full exposure row.
@@ -991,11 +992,31 @@ internal fun X14uCaptureLayout(
             when (tab) {
                 "PROFILE" -> {
                     val label = renderProfiles.options.firstOrNull { it.id == renderProfiles.selectedId }?.label ?: "RAWR NTRL"
-                    cells = listOf(X14uCell("profile", label, if (renderProfiles.log) "LOG PROFILE" else "PROFILE"))
+                    // X14U: an imported LUT gets its own STRENGTH (mixed over RAWR NTRL); film doesn't use the profile.
+                    val lutId = (renderProfiles.selectedId as? com.rawr.camera.model.RenderProfileSelection.Imported)
+                        ?.profileId?.takeIf { !renderProfiles.log }
+                    val strength = lutId?.let { lutStrengths[it] ?: 1f } ?: 1f
+                    val strengthPct = (strength * 100f).roundToInt()
+                    cells = listOf(X14uCell("profile", label, if (renderProfiles.log) "LOG PROFILE" else "PROFILE")) +
+                        if (lutId != null) listOf(X14uCell("profile.strength", "$strengthPct%", "STRENGTH",
+                            changed = strengthPct != 100, enabled = !film)) else emptyList()
                     // LOG on lists the LOG profiles, LOG off the usual ones.
                     val options = renderProfiles.options
-                    editorFor = {
-                        X14uEditor.Chips(
+                    editorFor = { key ->
+                        if (key == "profile.strength" && lutId != null) {
+                            if (film) X14uEditor.Message("Film simulation doesn't use the profile")
+                            else X14uEditor.Ruler(
+                                count = 21,
+                                index = (strength * 20f).roundToInt().coerceIn(0, 20),
+                                valueText = "$strengthPct%",
+                                label = { i -> if (i % 5 == 0) "${i * 5}" else null },
+                                major = { i -> i % 5 == 0 },
+                                spacing = 14.dp,
+                                enabled = !renderProfiles.locked,
+                                onReset = { com.rawr.camera.settings.model.LutStrengthSettings.set(lutId, 1f) },
+                                onIndex = { new, _ -> com.rawr.camera.settings.model.LutStrengthSettings.set(lutId, new / 20f) }
+                            )
+                        } else X14uEditor.Chips(
                             options.map { it.label },
                             options.indexOfFirst { it.id == renderProfiles.selectedId },
                             enabled = !renderProfiles.locked

@@ -37,6 +37,7 @@ class PreviewLookController final {
                               float vibrance);
     // values: tonemap_integration::kAgxControlCount AgX controls.
     void setAgxParameters(const float* values);
+    void setLutStrength(float strength);
     void setAssetManager(AAssetManager* assets) noexcept { assetManager_ = assets; }
     bool requestedFilmEnabled() const noexcept { return requestedFilmEnabled_; }
     const spektrafilm_native::FilmLook& filmLook() const noexcept { return filmLook_; }
